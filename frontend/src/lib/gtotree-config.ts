@@ -448,6 +448,12 @@ export interface RunStatus {
   treeFile?: string | null;
   alignmentFile?: string | null;
   logFile?: string | null;
+  /** Self-contained interactive dashboard baked by gtotree_report.py. */
+  reportFile?: string | null;
+  /** Genomes_summary_info.tsv (per-genome QC + taxonomy). */
+  summaryFile?: string | null;
+  /** SCG_hit_counts.tsv (per-genome SCG hit matrix). */
+  hitsFile?: string | null;
   artifactCount: number;
 }
 
@@ -464,7 +470,10 @@ export function deriveStatus(folder: string, entries: S3ListEntry[]): RunStatus 
 
   const treeFile = find(/\.(tre|tree|nwk|newick)$/i);
   const alignmentFile = find(/aligned.*\.(faa|fa|fasta)$/i) || find(/\.(aln|afa)$/i);
-  const logFile = find(/\.log$/i) || find(/summary/i);
+  const logFile = find(/gtotree-?runlog\.txt$/i) || find(/run\.log$/i) || find(/\.log$/i);
+  const reportFile = find(/gtotree-report\.html$/i) || find(/report\.html$/i);
+  const summaryFile = find(/genomes?_summary_info\.tsv$/i) || find(/summary_info\.tsv$/i);
+  const hitsFile = find(/scg_hit_counts\.tsv$/i);
 
   let state: RunState = "pending";
   if (treeFile || alignmentFile) state = "succeeded";
@@ -472,6 +481,7 @@ export function deriveStatus(folder: string, entries: S3ListEntry[]): RunStatus 
 
   return {
     folder, state, treeFile, alignmentFile, logFile,
+    reportFile, summaryFile, hitsFile,
     artifactCount: rels.length,
   };
 }

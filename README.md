@@ -16,10 +16,14 @@ app reads the resulting tree back from a public results bucket.
   (`-c/-G/-B`), tree program (`-T`), KO/Pfam searches (`-K/-p`), and run settings
   (`-N/-k/-n/-M/-j/-X/-P`). Only changed values are sent; live command preview.
 - **1 GB total upload cap** enforced client-side.
-- **Interactive tree viewer** — parses the Newick output and renders a
-  phylogram/cladogram with zoom and tip highlighting, plus a Run log tab and a
-  Files tab to download the tree, alignment, log, and iToL files (for iTOL,
-  FigTree, etc.).
+- **Interactive results dashboard** — the results page has a **Dashboard** tab
+  that embeds a self-contained interactive report (styled like the MAB DESeq
+  report) with five panels: an explorable **tree** (phylogram/cladogram/radial,
+  re-root, collapse/expand, highlight, export SVG/Newick), the concatenated SCG
+  **alignment** viewer, an **SCG presence heatmap**, a sortable **genome QC**
+  table, and a **taxonomy sunburst**. Plus Tree / Run log / Files tabs.
+- **Offline report** — the same dashboard is baked to a single
+  `gtotree-report.html` you can download and open in any browser offline.
 
 ## Develop
 
@@ -41,9 +45,12 @@ Wire the buckets + Lambda + tower per [`AWS_SETUP.md`](./AWS_SETUP.md).
 
 ## Layout
 
-- `frontend/` — the React app
+- `frontend/` — the React app (Submit + results page with the Dashboard tab)
 - `lambda/gtotree_presign.py` — presign Lambda (Function URL)
-- `backend/gtotree_processing.py` — the tower (polls input bucket, runs GToTree, writes results)
+- `backend/gtotree_worker.py` — the tower (polls input bucket, runs GToTree, writes results, bakes the report)
+- `backend/gtotree_report.py` + `backend/report_assets/` — the interactive HTML dashboard generator
+- `backend/gtotree_processing.py` — original minimal poller (kept for reference)
+- `backend/requirements.txt` — `boto3` (required) + `plotly` (optional)
 
 For research and educational use only. Please cite GToTree:
 Lee, M. D. (2019), *Bioinformatics* 35(20):4162–4164.

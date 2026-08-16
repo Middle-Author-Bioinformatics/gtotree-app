@@ -192,6 +192,20 @@ Env vars honored by the tower: `GTOTREE_INPUT_BUCKET`, `GTOTREE_RESULTS_BUCKET`,
 `GTOTREE_DATA_DIR`, `GTOTREE_RESULTS_DIR`, `CONDA_BIN`, `GTOTREE_CONDA_ENV`,
 `GTOTREE_MAX_PARALLEL_JOBS`. Run it on a schedule (cron) like the breseq tower.
 
+> **Two worker options in `backend/`:**
+> - **`gtotree_worker.py`** (recommended) — FeGenie-style worker with `--once`
+>   cron mode, lock file, `status.json` state machine, `raw-results.tar.gz`, and
+>   it bakes the interactive **`gtotree-report.html`** dashboard via
+>   `gtotree_report.py`. See `backend/README.md`. Needs `boto3` (+ optional
+>   `plotly` to inline the heatmap JS): `pip install -r backend/requirements.txt`.
+> - **`gtotree_processing.py`** — the original minimal poller (kept for reference).
+>
+> The React results page has a **Dashboard** tab that embeds
+> `gtotree-report.html` in an iframe. Because it is served from the results
+> bucket and framed by the Amplify origin, the results-bucket CORS below (GET/HEAD
+> from your origin) already covers it — no extra config needed. The file also
+> downloads from the Files tab and opens fully offline.
+
 ---
 
 ## What the frontend writes (form-data.txt contract)

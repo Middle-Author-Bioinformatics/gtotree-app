@@ -9,7 +9,7 @@ import { TreeViewer } from "./TreeViewer";
 import { cn } from "../lib/utils";
 import {
   ArrowLeft, Download, FileText, RefreshCw, Clock, Copy,
-  Loader2, ListTree, ScrollText, FileArchive,
+  Loader2, ListTree, ScrollText, FileArchive, LayoutDashboard, ExternalLink,
 } from "lucide-react";
 
 interface Props {
@@ -23,8 +23,9 @@ export function ResultsView({ folder, onBack }: Props) {
   const [artErr, setArtErr] = useState<string | null>(null);
   const [newick, setNewick] = useState<string | null>(null);
   const [logText, setLogText] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tree" | "log" | "files">("tree");
+  const [tab, setTab] = useState<"dashboard" | "tree" | "log" | "files">("dashboard");
   const [loaded, setLoaded] = useState(false);
+  const [tabInit, setTabInit] = useState(false);
 
   async function loadAll() {
     try {
@@ -41,6 +42,11 @@ export function ResultsView({ folder, onBack }: Props) {
       }
       if (s.logFile && logText === null) {
         try { setLogText(await fetchTextArtifact(folder, s.logFile)); } catch { /* */ }
+      }
+      // Default to the interactive dashboard when the report exists; otherwise Tree.
+      if (!tabInit && s.state !== "pending") {
+        setTab(s.reportFile ? "dashboard" : "tree");
+        setTabInit(true);
       }
     } catch (e: any) {
       setArtErr(String(e?.message ?? e));
@@ -97,15 +103,50 @@ export function ResultsView({ folder, onBack }: Props) {
       )}
 
       <div className="flex items-center gap-1">
+        {status?.reportFile && (
+          <TabBtn label="Dashboard" active={tab === "dashboard"} onClick={() => setTab("dashboard")} />
+        )}
         <TabBtn label="Tree" active={tab === "tree"} onClick={() => setTab("tree")} />
         <TabBtn label="Run log" active={tab === "log"} onClick={() => setTab("log")} />
         <TabBtn label={artifactCount ? `Files · ${artifactCount}` : "Files"} active={tab === "files"} onClick={() => setTab("files")} />
       </div>
 
+      {tab === "dashboard" && status?.reportFile && <DashboardTab folder={folder} reportFile={status.reportFile} />}
+      {tab === "dashboard" && !status?.reportFile && <TreeTab folder={folder} status={status} newick={newick} />}
       {tab === "tree" && <TreeTab folder={folder} status={status} newick={newick} />}
       {tab === "log" && <LogTab logText={logText} status={status} />}
       {tab === "files" && <FilesTab folder={folder} artifacts={artifacts} />}
     </div>
+  );
+}
+
+function DashboardTab({ folder, reportFile }: { folder: string; reportFile: string }) {
+  const url = artifactUrl(folder, reportFile);
+  return (
+    <section className="panel">
+      <div className="panel-hd flex items-center gap-2">
+        <LayoutDashboard size={15} className="text-accent" />
+        <h3 className="text-sm font-semibold">Interactive dashboard</h3>
+        <span className="text-xs font-mono text-fg-muted">{reportFile}</span>
+        <a href={url} target="_blank" rel="noreferrer"
+          className="ml-auto text-xs text-accent hover:underline inline-flex items-center gap-1">
+          <ExternalLink size={12} /> Open in new tab
+        </a>
+      </div>
+      <div className="panel-bd">
+        <iframe
+          src={url}
+          title="GToTree interactive dashboard"
+          className="w-full rounded-lg border border-border bg-white"
+          style={{ height: "78vh" }}
+        />
+        <p className="text-[11px] text-fg-subtle mt-2 leading-relaxed">
+          Explore and manipulate the tree, view the alignment, the SCG presence heatmap,
+          per-genome QC, and the taxonomy sunburst. This is the same self-contained report
+          you can download from the Files tab (<span className="font-mono">{reportFile}</span>) and open offline.
+        </p>
+      </div>
+    </section>
   );
 }
 
