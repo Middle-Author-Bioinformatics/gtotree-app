@@ -137,6 +137,17 @@ table.qc tbody tr:hover, table.qc tr:hover td { background: color-mix(in srgb, v
 .tax-label { text-align: center; margin-top: 10px; font-size: 13px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
 #taxCanvas { display: grid; place-items: center; }
 
+.tree-note { font-size: 12px; color: var(--text-muted); background: var(--primary-soft);
+  border: 1px dashed color-mix(in srgb, var(--primary) 40%, transparent); border-radius: 8px;
+  padding: 8px 12px; margin: 10px 0 0; }
+.tool-hint { font-size: 12px; color: var(--text-muted); }
+/* alignment column-number row */
+.aln-nums { position: relative; height: 14px; overflow: visible; }
+.aln-nums .aln-seq { position: relative; }
+.aln-num { position: absolute; transform: translateX(-100%); font: 10px 'JetBrains Mono', monospace;
+  color: var(--text-faint); white-space: nowrap; }
+.aln-ruler .aln-cell.num { color: var(--primary); font-weight: 600; }
+.aln-ruler .aln-cell.tick { color: var(--text-faint); }
 .empty { color: var(--text-muted); text-align: center; padding: 48px 20px; font-size: .95rem; }
 footer { border-top: 1px solid var(--border); color: var(--text-muted); font-size: .8rem; text-align: center;
   padding: 28px 0 40px; margin-top: 20px; }

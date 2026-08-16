@@ -26,6 +26,7 @@ export function ResultsView({ folder, onBack }: Props) {
   const [tab, setTab] = useState<"dashboard" | "tree" | "log" | "files">("dashboard");
   const [loaded, setLoaded] = useState(false);
   const [tabInit, setTabInit] = useState(false);
+  const [dlState, setDlState] = useState<"idle" | "working" | "error">("idle");
 
   async function loadAll() {
     try {
@@ -69,6 +70,31 @@ export function ResultsView({ folder, onBack }: Props) {
 
   const copyFolder = async () => { try { await navigator.clipboard.writeText(folder); } catch { /* */ } };
 
+  // Master download: pull the self-contained dashboard HTML (identical to what
+  // the Dashboard tab shows) so it can be saved, emailed, and opened offline.
+  const downloadReport = async () => {
+    if (!status?.reportFile) return;
+    setDlState("working");
+    try {
+      const res = await fetch(artifactUrl(folder, status.reportFile));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `GToTree_${folder}_report.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setDlState("idle");
+    } catch {
+      setDlState("error");
+      setTimeout(() => setDlState("idle"), 2500);
+    }
+  };
+
   return (
     <div className="space-y-5 animate-fade-in">
       <section className="panel">
@@ -82,6 +108,19 @@ export function ResultsView({ folder, onBack }: Props) {
           </div>
           <div className="ml-auto flex items-center gap-2">
             {status && <StatePill state={status.state} />}
+            {status?.reportFile && (
+              <button
+                onClick={downloadReport}
+                disabled={dlState === "working"}
+                title="Download the full interactive dashboard as a single self-contained HTML file"
+                className="btn-primary py-1.5">
+                {dlState === "working"
+                  ? <><Loader2 size={14} className="animate-spin" /> Preparing…</>
+                  : dlState === "error"
+                  ? <><Download size={14} /> Retry download</>
+                  : <><Download size={14} /> Download report</>}
+              </button>
+            )}
             <button onClick={loadAll} className="btn-ghost py-1.5" aria-label="Refresh"><RefreshCw size={14} /></button>
             <button onClick={copyFolder} className="btn-ghost py-1.5"><Copy size={14} /> Copy code</button>
           </div>

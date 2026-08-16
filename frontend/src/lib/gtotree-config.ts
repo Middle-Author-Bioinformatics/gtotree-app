@@ -41,8 +41,8 @@ export const GT_CONFIG = {
 
 export const HAS_BACKEND = GT_CONFIG.apiBase !== "";
 
-/** Hard cap on total uploaded data across all inputs, in bytes. 1 GB. */
-export const MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
+/** Hard cap on total uploaded data across all inputs, in bytes. 100 MB. */
+export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Result code generator — a flat, URL-safe slug at the bucket root (no subdirs),

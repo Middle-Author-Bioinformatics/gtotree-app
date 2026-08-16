@@ -78,7 +78,7 @@
   /* =========================================================
    * Tree renderer (rectangular phylogram/cladogram + radial)
    * =======================================================*/
-  const T = { root: null, layout: "phylogram", radial: false, showSupport: true, zoom: 1, highlight: "", rerootNode: null, collapsed: new Set() };
+  const T = { root: null, layout: "phylogram", radial: false, forcePhylo: false, showSupport: true, zoom: 1, highlight: "", rerootNode: null, collapsed: new Set(), effectiveCladogram: false };
 
   function assignLeafOrder(n, counter) {
     if (!n.children.length || T.collapsed.has(n)) { n._y = counter.i++; n._leaf = true; return n._y; }
@@ -134,14 +134,23 @@
 
     const rowH = 20 * T.zoom;
     const labelPad = 8;
-    const maxLen = maxXLen(T.root, 0) || 1;
+    const rawMaxLen = maxXLen(T.root, 0);
+    const maxLen = rawMaxLen || 1;
     const maxIdx = maxDepthIdx(T.root, 0) || 1;
     const margin = { top: 24, right: 220, bottom: 24, left: 24 };
     const plotW = 620 * T.zoom;
     const height = margin.top + margin.bottom + nLeaves * rowH;
     const width = margin.left + margin.right + plotW;
 
-    const useCladogram = T.layout === "cladogram";
+    // Degenerate / low-resolution tree: when many tips have ~0-length branches
+    // (near-identical genomes), a phylogram draws them with no visible branch.
+    // Detect that and fall back to cladogram spacing so every tip gets a line,
+    // and tell the user why. (Fully-zero trees also hit this.)
+    let zeroTips = 0;
+    leaves.forEach(l => { if (!l.length || Math.abs(l.length) < 1e-9) zeroTips++; });
+    const lowRes = rawMaxLen < 1e-9 || (leaves.length > 0 && zeroTips / leaves.length >= 0.5);
+    const useCladogram = T.layout === "cladogram" || (lowRes && !T.radial && !T.forcePhylo);
+    T.effectiveCladogram = useCladogram;
     const xScale = v => margin.left + (useCladogram ? 0 : (v / maxLen) * plotW);
     const xScaleIdx = idx => margin.left + (idx / maxIdx) * plotW;
     const getX = n => useCladogram ? xScaleIdx(n._depthIdx) : xScale(n._xLen);
@@ -200,7 +209,14 @@
       svg.appendChild(el("path", { d: `M${bx},${by} L${bx + px},${by}`, class: "scalebar" }));
       const tl = el("text", { x: bx + px / 2, y: by - 5, class: "scalelabel", "text-anchor": "middle" }); tl.textContent = barLen; svg.appendChild(tl);
     }
+    if (lowRes && useCladogram && !T.radial) {
+      const note = document.createElement("div");
+      note.className = "tree-note";
+      note.innerHTML = `${zeroTips} of ${leaves.length} tips have ~0-length branches (near-identical genomes), which a true phylogram would draw with no visible branch. Showing <strong>cladogram</strong> spacing (topology only) so every tip is visible. Click <strong>Phylogram</strong> to force branch-length scaling anyway.`;
+      host.appendChild(note);
+    }
     host.appendChild(svg);
+    syncTreeBtns();
   }
 
   function renderRadial(host, leaves, maxLen, useCladogram, maxIdx) {
@@ -235,6 +251,7 @@
       }
     })(T.root);
     host.appendChild(svg);
+    syncTreeBtns();
   }
 
   function niceScale(v) { const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; let nf = f >= 5 ? 5 : f >= 2 ? 2 : 1; return +(nf * p).toPrecision(2); }
@@ -242,9 +259,36 @@
   function downloadNewick() {
     function toNwk(n) { let s = ""; if (n.children.length) s = "(" + n.children.map(toNwk).join(",") + ")"; s += (n.name || ""); if (n.length != null && !isNaN(n.length)) s += ":" + n.length; return s; }
     const txt = toNwk(T.root) + ";";
-    dl(txt, (D.title || "tree") + ".nwk", "text/plain");
+    dl(txt, (D.title || "tree") + ".tre", "text/plain");
   }
-  function downloadTreeSVG() { const svg = $("#treeCanvas svg"); if (!svg) return; dl(new XMLSerializer().serializeToString(svg), (D.title || "tree") + ".svg", "image/svg+xml"); }
+  // Inline the computed colors so the exported SVG renders standalone (page CSS
+  // is not carried into a downloaded .svg file).
+  const SVG_STYLE = `
+    .branch{stroke:#5b6b7b;stroke-width:1.3;fill:none}
+    .tiplabel{font:12px 'JetBrains Mono',ui-monospace,monospace;fill:#0f1e2e}
+    .tiplabel.match{fill:#d6336c;font-weight:700}
+    .tip-dot{fill:#5b6b7b}
+    .tip-dot.match{fill:#d6336c}
+    .node-dot{fill:#ffffff;stroke:#5b6b7b;stroke-width:1.2}
+    .collapsed-tri{fill:#0891b2}
+    .support{font:9px 'JetBrains Mono',monospace;fill:#566878}
+    .scalebar{stroke:#0f1e2e;stroke-width:1.5}
+    .scalelabel{font:10px 'JetBrains Mono',monospace;fill:#5b6b7b}
+    .arc-label{font:10px 'Inter',sans-serif;fill:#fff}
+  `;
+  function downloadTreeSVG() {
+    const svg = $("#treeCanvas svg");
+    if (!svg) return;
+    const clone = svg.cloneNode(true);
+    const style = document.createElementNS(NS, "style");
+    style.textContent = SVG_STYLE;
+    clone.insertBefore(style, clone.firstChild);
+    // add a white background rect so lines are visible on any viewer
+    const bg = el("rect", { x: 0, y: 0, width: svg.getAttribute("width"), height: svg.getAttribute("height"), fill: "#ffffff" });
+    clone.insertBefore(bg, clone.firstChild);
+    const out = '<?xml version="1.0" encoding="utf-8"?>\n' + new XMLSerializer().serializeToString(clone);
+    dl(out, (D.title || "tree") + ".svg", "image/svg+xml");
+  }
   function dl(text, name, type) { const b = new Blob([text], { type }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }
 
   /* =========================================================
@@ -274,10 +318,35 @@
     const cw = 9, rh = 16, labelW = 180;
 
     const rows = [];
-    // ruler
-    let ruler = '<div class="aln-row aln-ruler"><span class="aln-label"></span><span class="aln-seq">';
-    for (let c = start; c < end; c++) ruler += `<i class="aln-cell">${(c + 1) % 10 === 0 ? ((c + 1) / 10 % 10) : ((c + 1) % 5 === 0 ? "\u00b7" : "&nbsp;")}</i>`;
-    ruler += "</span></div>"; rows.push(ruler);
+    // ruler: print the actual column number (1-based) every 10 columns, right-
+    // aligned so the last digit sits under its column; a tick (\u2502) every 10,
+    // a small dot every 5.
+    let ruler = '<div class="aln-row aln-ruler"><span class="aln-label">column \u2192</span><span class="aln-seq">';
+    for (let c = start; c < end; c++) {
+      const col1 = c + 1;
+      if (col1 % 10 === 0) {
+        // place the number so it ends at this column
+        const label = String(col1);
+        // render preceding cells as the number's digits where they fit
+        ruler += `<i class="aln-cell num" data-col="${col1}">${label.slice(-1)}</i>`;
+      } else if (col1 % 5 === 0) {
+        ruler += '<i class="aln-cell tick">\u00b7</i>';
+      } else {
+        ruler += '<i class="aln-cell">&nbsp;</i>';
+      }
+    }
+    ruler += "</span></div>";
+    // second ruler row showing full numbers above the ticks
+    let numRow = '<div class="aln-row aln-ruler aln-nums"><span class="aln-label"></span><span class="aln-seq">';
+    for (let c = start; c < end; c++) {
+      const col1 = c + 1;
+      if (col1 % 10 === 0) {
+        const label = String(col1);
+        numRow += `<span class="aln-num" style="left:calc(${c - start} * var(--cw))">${label}</span>`;
+      }
+    }
+    numRow += "</span></div>";
+    rows.push(numRow); rows.push(ruler);
 
     for (let r = 0; r < ids.length; r++) {
       const seq = seqs[r];
@@ -291,7 +360,7 @@
       rows.push(`<div class="aln-row"><span class="aln-label" title="${escapeHtml(ids[r])}">${escapeHtml(ids[r])}</span><span class="aln-seq">${cells}</span></div>`);
     }
     host.innerHTML = `<div class="aln-grid" style="--cw:${cw}px;--rh:${rh}px;--labelW:${labelW}px">${rows.join("")}</div>`;
-    $("#alnMeta").textContent = `${ids.length} sequences \u00b7 ${alnLen} columns \u00b7 showing ${start + 1}\u2013${end}`;
+    $("#alnMeta").textContent = `${ids.length} genomes \u00b7 concatenated SCG alignment ${alnLen} aa wide \u00b7 viewing columns ${start + 1}\u2013${end} of ${alnLen}`;
     const sl = $("#alnSlider"); if (sl) { sl.max = Math.max(0, alnLen - ALN.cols); sl.value = start; }
   }
 
@@ -305,10 +374,26 @@
     if (host.dataset.rendered) return;
     const dark = rootEl.getAttribute("data-theme") === "dark";
     const z = D.hits.matrix, x = D.hits.genes, y = D.hits.genomes;
+    // Hit counts are integers: 0 = absent, 1 = single copy (ideal for an SCG),
+    // 2+ = multiple copies (possible redundancy/paralog). Use a fixed discrete
+    // scale anchored at 0..2 so the legend is meaningful even when every value
+    // is 1 (a single-value matrix would otherwise auto-scale to 0.6..1.4).
+    const zmax = Math.max(2, ...z.map(row => Math.max(...row)));
+    const discrete = [
+      [0.0, dark ? "#3a1220" : "#f7d6d6"],   // 0 absent  (red-ish)
+      [0.999 / zmax, dark ? "#3a1220" : "#f7d6d6"],
+      [1 / zmax, dark ? "#164e63" : "#0891b2"], // 1 present (cyan)
+      [1.999 / zmax, dark ? "#164e63" : "#0891b2"],
+      [2 / zmax, dark ? "#7c3aed" : "#6d28d9"],  // 2+ multi-copy (purple)
+      [1.0, dark ? "#7c3aed" : "#6d28d9"],
+    ];
     const data = [{
-      z, x, y, type: "heatmap", colorscale: "YlGnBu", reversescale: true,
-      colorbar: { title: "hits", thickness: 12, len: 0.7 },
-      hovertemplate: "<b>%{y}</b><br>%{x}: %{z} hit(s)<extra></extra>",
+      z, x, y, type: "heatmap", colorscale: discrete, zmin: 0, zmax,
+      colorbar: {
+        title: "copies", thickness: 14, len: 0.6,
+        tickmode: "array", tickvals: [0, 1, 2], ticktext: ["0 (absent)", "1 (present)", "2+ (multi)"],
+      },
+      hovertemplate: "<b>%{y}</b><br>%{x}: %{z} copy(ies)<extra></extra>",
       xgap: 1, ygap: 1,
     }];
     const layout = {
@@ -430,9 +515,9 @@
     const tb = $("#themeBtn"); if (tb) tb.addEventListener("click", () => setTheme(rootEl.getAttribute("data-theme") === "dark" ? "light" : "dark"));
 
     // tree controls
-    bind("#btnPhylo", () => { T.layout = "phylogram"; syncTreeBtns(); renderTree(); });
-    bind("#btnClado", () => { T.layout = "cladogram"; syncTreeBtns(); renderTree(); });
-    bind("#btnRadial", () => { T.radial = !T.radial; syncTreeBtns(); renderTree(); });
+    bind("#btnPhylo", () => { T.layout = "phylogram"; T.radial = false; T.forcePhylo = true; syncTreeBtns(); renderTree(); });
+    bind("#btnClado", () => { T.layout = "cladogram"; T.radial = false; T.forcePhylo = false; syncTreeBtns(); renderTree(); });
+    bind("#btnRadial", () => { T.radial = true; T.forcePhylo = false; syncTreeBtns(); renderTree(); });
     bind("#btnZoomIn", () => { T.zoom = Math.min(4, T.zoom * 1.2); renderTree(); });
     bind("#btnZoomOut", () => { T.zoom = Math.max(0.3, T.zoom / 1.2); renderTree(); });
     bind("#btnSupport", () => { T.showSupport = !T.showSupport; syncTreeBtns(); renderTree(); });
@@ -470,8 +555,10 @@
   function bind(sel, fn) { const e = $(sel); if (e) e.addEventListener("click", fn); }
   function hideTab(id) { const a = $(`.nav-link[data-tab="${id}"]`); if (a) a.style.display = "none"; }
   function syncTreeBtns() {
-    setActive("#btnPhylo", !T.radial && T.layout === "phylogram");
-    setActive("#btnClado", !T.radial && T.layout === "cladogram");
+    // Reflect the EFFECTIVE view: an auto-cladogram (from a low-res tree) lights
+    // the Cladogram button even though T.layout is still "phylogram".
+    setActive("#btnPhylo", !T.radial && !T.effectiveCladogram);
+    setActive("#btnClado", !T.radial && T.effectiveCladogram);
     setActive("#btnRadial", T.radial);
     setActive("#btnSupport", T.showSupport);
   }

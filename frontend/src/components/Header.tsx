@@ -2,6 +2,7 @@ import { useTheme } from "../lib/theme";
 import { HAS_BACKEND } from "../lib/gtotree-config";
 import { Sun, Moon, AlertTriangle } from "lucide-react";
 import mabLogo from "/mab-logo.jpg";
+import gtotreeLogo from "/gtotree-logo.jpg";
 
 interface Props {
   onTitleClick?: () => void;
@@ -18,9 +19,9 @@ export function Header({ onTitleClick }: Props) {
           onClick={onTitleClick}
           className="flex items-center gap-3 mr-2 min-w-0 group">
           <img
-            src={mabLogo}
-            alt="Middle Author Bioinformatics"
-            className="h-9 w-auto rounded-md shrink-0 ring-1 ring-border"
+            src={gtotreeLogo}
+            alt="GToTree"
+            className="h-9 w-auto rounded-md shrink-0 bg-white px-1.5 py-0.5 ring-1 ring-border"
           />
           <div className="h-7 w-px bg-border" aria-hidden />
           <div className="flex items-center gap-2 min-w-0">
@@ -36,7 +37,7 @@ export function Header({ onTitleClick }: Props) {
           </div>
         </button>
 
-        <div className="ml-auto flex items-center gap-2 text-xs">
+        <div className="ml-auto flex items-center gap-3 text-xs">
           {!HAS_BACKEND && (
             <span className="pill border-warn/40 bg-warn/10 text-warn">
               <AlertTriangle size={12} /> preview mode
@@ -49,6 +50,18 @@ export function Header({ onTitleClick }: Props) {
             title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
             {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
           </button>
+          <a
+            href="https://midauthorbio.com"
+            target="_blank"
+            rel="noreferrer"
+            title="Middle Author Bioinformatics"
+            className="shrink-0">
+            <img
+              src={mabLogo}
+              alt="Middle Author Bioinformatics"
+              className="h-9 w-auto rounded-md ring-1 ring-border hover:ring-accent transition"
+            />
+          </a>
         </div>
       </div>
     </header>

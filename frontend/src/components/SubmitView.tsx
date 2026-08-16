@@ -60,6 +60,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
     [accFiles, proteinFiles, genbankFiles, genomeFiles, koFiles, pfamFiles],
   );
   const overCap = totalBytes > MAX_TOTAL_BYTES;
+  const capLabel = fmtBytes(MAX_TOTAL_BYTES);
 
   const extraFlags = useMemo(() => buildGtotreeFlags(advanced), [advanced]);
 
@@ -93,7 +94,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
   const hints: string[] = [];
   if (!geneSetOk) hints.push("a single-copy gene set");
   if (!hasAnyInput) hints.push("at least one genome input (accessions, protein, GenBank, or genome)");
-  if (overCap) hints.push("total data under 1 GB");
+  if (overCap) hints.push(`total data under ${capLabel}`);
 
   async function handleSubmit() {
     setPhase("uploading");
@@ -168,6 +169,16 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
             genes, aligns them, and infers a tree. Files go to S3 with a{" "}
             <span className="font-mono">form-data.txt</span>; the tower runs the
             pipeline and writes the tree back for this page to display.
+          </p>
+          <p className="mt-3 text-xs text-fg-faint">
+            Please cite GToTree:{" "}
+            <a
+              href="https://doi.org/10.1093/bioinformatics/btz188"
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent hover:underline">
+              Lee, M. D. (2019), Bioinformatics 35(20):4162–4164
+            </a>.
           </p>
         </div>
       </section>
@@ -249,7 +260,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
           <div className={`ml-auto text-xs font-mono px-2.5 py-1 rounded-md border ${
             overCap ? "border-danger/40 bg-danger/10 text-danger" : "border-border bg-surface-2 text-fg-muted"
           }`}>
-            {fmtBytes(totalBytes)} / 1 GB
+            {fmtBytes(totalBytes)} / {capLabel}
           </div>
         </div>
         <div className="panel-bd space-y-5">
@@ -305,7 +316,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
           {overCap && (
             <div className="flex items-start gap-2 text-xs text-danger">
               <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              <span>Total data is {fmtBytes(totalBytes)}, over the 1 GB per-run limit. Remove some files.</span>
+              <span>Total data is {fmtBytes(totalBytes)}, over the {capLabel} per-run limit. Remove some files.</span>
             </div>
           )}
         </div>
@@ -416,9 +427,6 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
         </div>
       </section>
 
-      <p className="text-center text-[11px] text-fg-faint">
-        Please cite GToTree: Lee, M. D. (2019), Bioinformatics 35(20):4162–4164.
-      </p>
     </div>
   );
 }
