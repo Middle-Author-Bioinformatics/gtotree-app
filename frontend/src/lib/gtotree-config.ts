@@ -191,24 +191,10 @@ export const GTOTREE_OPTION_GROUPS: GtOptionGroup[] = [
         help: "Enable if you upload a single-column file of Pfam targets to search each genome for (hit-count table, hit fastas, and iToL files are produced). Upload the file in the KO/Pfam input slot." },
     ],
   },
-  {
-    id: "general",
-    title: "General run settings",
-    desc: "Performance and alignment behaviour.",
-    options: [
-      { key: "hmm_cpus", flag: "-n", label: "CPUs for HMM search", kind: "number", default: 2, min: 1, max: 16, step: 1,
-        help: "CPUs used during the HMM search (per genome; 2 is usually plenty). (DEFAULT=2)" },
-      { key: "muscle_threads", flag: "-M", label: "MUSCLE alignment threads", kind: "number", default: 5, min: 1, max: 32, step: 1,
-        help: "Threads MUSCLE uses during alignment. (DEFAULT=5)" },
-      { key: "parallel_jobs", flag: "-j", label: "Parallel jobs", kind: "number", default: 1, min: 1, max: 50, step: 1,
-        help: "Jobs to run in parallel for parallelizable steps (downloads, alignments). Keep ≤ ~50 to avoid NCBI throttling on downloads. (DEFAULT=1)" },
-      { key: "no_super5", flag: "-X", label: "Disable super5 for >1000 genomes", kind: "bool", default: false,
-        help: "For >1,000 genomes GToTree uses MUSCLE's faster 'super5' algorithm by default; enable this to force the standard (slower, higher-quality) algorithm." },
-      { key: "use_http", flag: "-P", label: "Use HTTP instead of FTP", kind: "bool", default: false,
-        help: "Try HTTP for downloads if your system can't use FTP." },
-    ],
-  },
 ];
+// NOTE: performance flags (-n CPUs, -M MUSCLE threads, -j parallel jobs, -X
+// super5, -P http) are intentionally NOT exposed to end users. The tower runs
+// GToTree with sensible server-side defaults for those.
 
 export type AdvancedOptions = Record<string, number | boolean | string>;
 

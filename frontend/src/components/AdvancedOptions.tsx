@@ -39,7 +39,7 @@ export function AdvancedOptions({ options, setOptions, defaults }: Props) {
             )}
           </div>
           <div className="text-xs text-fg-muted">
-            Taxonomy, filtering, tree program, KO/Pfam, and run settings. Optional —
+            Taxonomy, filtering, tree program, and KO/Pfam. Optional —
             defaults match a standard run.
           </div>
         </div>
