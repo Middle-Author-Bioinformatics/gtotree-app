@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GToTree Web Server</title>
+    <meta name="description" content="Submit genomes, run GToTree phylogenomics, and view the resulting tree." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      // No-flash theme bootstrap. Default = light; respect any saved
+      // preference if the user has toggled before.
+      (function () {
+        var t = null;
+        try {
+          t = localStorage.getItem("gtotree-theme");
+        } catch (e) { /* localStorage unavailable */ }
+        if (t !== "light" && t !== "dark") t = "light";
+        if (t === "dark") document.documentElement.classList.add("dark");
+        document.documentElement.style.colorScheme = t;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
