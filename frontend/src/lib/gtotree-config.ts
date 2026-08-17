@@ -145,8 +145,8 @@ export const GTOTREE_OPTION_GROUPS: GtOptionGroup[] = [
     title: "Taxonomy labels",
     desc: "Add NCBI / GTDB taxonomy to the genome labels in the tree.",
     options: [
-      { key: "add_ncbi_tax", flag: "-t", label: "Add NCBI taxonomy", kind: "bool", default: false,
-        help: "Add NCBI taxonomy info to sequence headers for genomes with NCBI taxids (mainly -a accessions and GenBank inputs)." },
+      { key: "add_ncbi_tax", flag: "-t", label: "Add NCBI taxonomy", kind: "bool", default: true,
+        help: "Add NCBI taxonomy info to sequence headers for genomes with NCBI taxids (mainly -a accessions and GenBank inputs). Enabled by default so tips are labeled with lineage where available." },
       { key: "add_gtdb_tax", flag: "-D", label: "Add GTDB taxonomy", kind: "bool", default: false,
         help: "Add Genome Taxonomy Database (GTDB) taxonomy. Only effective for NCBI accession inputs. Can combine with NCBI; accessions not in GTDB get NCBI info with '_NCBI' appended." },
       { key: "tax_ranks", flag: "-L", label: "Taxonomy ranks", kind: "text", default: "Domain,Phylum,Class,Species,Strain",
@@ -222,7 +222,9 @@ export function buildGtotreeFlags(opts: AdvancedOptions): string[] {
     // KO/Pfam are represented in form-data via their uploaded file, not here.
     if (key === "ko_targets" || key === "pfam_targets") continue;
     if (def.kind === "bool") {
-      if (val === true && def.default !== true) flags.push(def.flag);
+      // Boolean GToTree flags are presence-if-on: include the flag whenever the
+      // toggle is on, even if it defaults to on (e.g. -t NCBI taxonomy).
+      if (val === true) flags.push(def.flag);
     } else {
       const isDefault = String(val) === String(def.default);
       if (!isDefault && String(val).trim() !== "") flags.push(`${def.flag} ${val}`);
