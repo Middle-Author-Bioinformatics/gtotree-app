@@ -450,7 +450,8 @@ function SubmittedHero({ folder, onView }: { folder: string; onView: () => void 
       <code className="block font-mono text-xl sm:text-2xl font-bold tracking-wide break-all">{folder}</code>
       <p className="text-xs opacity-90 mt-2 mb-4 leading-snug max-w-md">
         Save this code — it’s how you come back to view your tree. GToTree runs can
-        take a while; the tree appears here once the tower finishes.
+        take a while, depending on how many genomes you provided; the tree appears
+        here once the tower finishes.
       </p>
       <div className="flex gap-2">
         <button onClick={copy} className="text-xs px-3 py-1.5 rounded-md bg-bg/20 hover:bg-bg/30 transition inline-flex items-center gap-1.5">

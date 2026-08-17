@@ -276,18 +276,49 @@
     .scalelabel{font:10px 'JetBrains Mono',monospace;fill:#5b6b7b}
     .arc-label{font:10px 'Inter',sans-serif;fill:#fff}
   `;
-  function downloadTreeSVG() {
+  // Export the tree as a PNG. We build a fully self-contained SVG string (styles
+  // inlined + white background), rasterize it onto a <canvas> at 2x for crisp
+  // output, and download the PNG. This avoids the fragility of standalone SVGs
+  // (missing CSS / fonts in external viewers).
+  function buildStandaloneSvg() {
     const svg = $("#treeCanvas svg");
-    if (!svg) return;
+    if (!svg) return null;
+    const w = +svg.getAttribute("width"), h = +svg.getAttribute("height");
     const clone = svg.cloneNode(true);
+    clone.setAttribute("xmlns", NS);
     const style = document.createElementNS(NS, "style");
     style.textContent = SVG_STYLE;
     clone.insertBefore(style, clone.firstChild);
-    // add a white background rect so lines are visible on any viewer
-    const bg = el("rect", { x: 0, y: 0, width: svg.getAttribute("width"), height: svg.getAttribute("height"), fill: "#ffffff" });
+    const bg = el("rect", { x: 0, y: 0, width: w, height: h, fill: "#ffffff" });
     clone.insertBefore(bg, clone.firstChild);
-    const out = '<?xml version="1.0" encoding="utf-8"?>\n' + new XMLSerializer().serializeToString(clone);
-    dl(out, (D.title || "tree") + ".svg", "image/svg+xml");
+    return { xml: '<?xml version="1.0" encoding="utf-8"?>\n' + new XMLSerializer().serializeToString(clone), w, h };
+  }
+  function downloadTreePNG() {
+    const built = buildStandaloneSvg();
+    if (!built) return;
+    const scale = 2;
+    const img = new Image();
+    const svgBlob = new Blob([built.xml], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    img.onload = function () {
+      const canvas = document.createElement("canvas");
+      canvas.width = built.w * scale;
+      canvas.height = built.h * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function (blob) {
+        const a = document.createElement("a");
+        const u = URL.createObjectURL(blob);
+        a.href = u; a.download = (D.title || "tree") + ".png"; a.click();
+        URL.revokeObjectURL(u);
+      }, "image/png");
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); };
+    img.src = url;
   }
   function dl(text, name, type) { const b = new Blob([text], { type }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }
 
@@ -318,35 +349,11 @@
     const cw = 9, rh = 16, labelW = 180;
 
     const rows = [];
-    // ruler: print the actual column number (1-based) every 10 columns, right-
-    // aligned so the last digit sits under its column; a tick (\u2502) every 10,
-    // a small dot every 5.
-    let ruler = '<div class="aln-row aln-ruler"><span class="aln-label">column \u2192</span><span class="aln-seq">';
-    for (let c = start; c < end; c++) {
-      const col1 = c + 1;
-      if (col1 % 10 === 0) {
-        // place the number so it ends at this column
-        const label = String(col1);
-        // render preceding cells as the number's digits where they fit
-        ruler += `<i class="aln-cell num" data-col="${col1}">${label.slice(-1)}</i>`;
-      } else if (col1 % 5 === 0) {
-        ruler += '<i class="aln-cell tick">\u00b7</i>';
-      } else {
-        ruler += '<i class="aln-cell">&nbsp;</i>';
-      }
-    }
-    ruler += "</span></div>";
-    // second ruler row showing full numbers above the ticks
-    let numRow = '<div class="aln-row aln-ruler aln-nums"><span class="aln-label"></span><span class="aln-seq">';
-    for (let c = start; c < end; c++) {
-      const col1 = c + 1;
-      if (col1 % 10 === 0) {
-        const label = String(col1);
-        numRow += `<span class="aln-num" style="left:calc(${c - start} * var(--cw))">${label}</span>`;
-      }
-    }
-    numRow += "</span></div>";
-    rows.push(numRow); rows.push(ruler);
+    // Simple range header — the per-column tick numbers never lined up cleanly
+    // across proportional layouts, so we just state the visible column range.
+    const rangeHdr = `<div class="aln-row aln-range"><span class="aln-label">columns</span>` +
+      `<span class="aln-seq">${start + 1}\u2013${end} of ${alnLen}</span></div>`;
+    rows.push(rangeHdr);
 
     for (let r = 0; r < ids.length; r++) {
       const seq = seqs[r];
@@ -524,7 +531,7 @@
     bind("#btnExpand", () => { T.collapsed.clear(); renderTree(); });
     bind("#btnResetRoot", () => { T.root = parseNewick(D.newick); T.collapsed.clear(); renderTree(); });
     bind("#btnNewick", downloadNewick);
-    bind("#btnTreeSVG", downloadTreeSVG);
+    bind("#btnTreePNG", downloadTreePNG);
     const hi = $("#treeSearch"); if (hi) hi.addEventListener("input", () => { T.highlight = hi.value; renderTree(); });
 
     // alignment controls
