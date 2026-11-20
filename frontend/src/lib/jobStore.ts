@@ -47,5 +47,6 @@ export function forgetJob(job_id: string) {
 
 /** Trim stray whitespace / leading hashes so users can paste a folder key. */
 export function normaliseJobId(input: string): string {
-  return input.trim().replace(/^#/, "").replace(/^\/+/, "").replace(/\/+$/, "");
+  const code=input.trim().replace(/^#/, "").replace(/^\/+/, "").replace(/\/+$/, "");
+  return /^[A-Za-z0-9_-]{1,64}$/.test(code)?code:"";
 }

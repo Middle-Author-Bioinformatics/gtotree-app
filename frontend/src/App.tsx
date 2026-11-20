@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Header } from "./components/Header";
 import { SubmitView } from "./components/SubmitView";
 import { ResultsView } from "./components/ResultsView";
+import { normaliseJobId } from "./lib/jobStore";
 import { HAS_BACKEND } from "./lib/gtotree-config";
 
 type View = { kind: "submit" } | { kind: "results"; folder: string };
 
 export default function App() {
-  const [view, setView] = useState<View>({ kind: "submit" });
+  const [view, setView] = useState<View>(() => { const code=normaliseJobId(new URLSearchParams(window.location.search).get("result")||"");return code?{kind:"results",folder:code}:{kind:"submit"}; });
 
   return (
     <div className="min-h-full relative z-10">

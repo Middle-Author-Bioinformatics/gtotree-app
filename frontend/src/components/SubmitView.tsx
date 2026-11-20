@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useGenomeImport } from "../lib/useGenomeImport";
+import { ACCESSION, MAX_REFERENCES, MAX_SELECTION_BYTES, parseSelection, type GenomeSelection } from "../lib/genome-selection";
+import { useEffect, useMemo, useState } from "react";
 import { Dropzone } from "./Dropzone";
 import { AdvancedOptions } from "./AdvancedOptions";
 import {
@@ -23,6 +25,9 @@ type Phase = "idle" | "uploading" | "done" | "error";
 type AccMode = "paste" | "file";
 
 export function SubmitView({ onSubmitted, onLookup }: Props) {
+  const {selection,setSelection,importError,setImportError}=useGenomeImport();
+  useEffect(()=>{if(selection){setAccMode("paste");setAccText(selection.genomes.map(g=>g.assembly_accession).join("\n"));}},[selection]);
+  async function importSelection(file:File|undefined){if(!file)return;try{if(file.size>MAX_SELECTION_BYTES)throw new Error("Selection file exceeds 1 MB.");setSelection(parseSelection(await file.text()));setImportError("");}catch(e){setImportError(e instanceof Error?e.message:String(e));}}
   // ---- Result-code lookup ----
   const [lookup, setLookup] = useState("");
   const doLookup = () => { const id = normaliseJobId(lookup); if (id) onLookup(id); };
@@ -35,6 +40,13 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
   const [accMode, setAccMode] = useState<AccMode>("paste");
   const [accText, setAccText] = useState("");
   const [accFiles, setAccFiles] = useState<File[]>([]);
+  const [fileAccessions,setFileAccessions]=useState<string[]>([]);
+  const [fileAccError,setFileAccError]=useState("");
+  const [readingAccessions,setReadingAccessions]=useState(false);
+  useEffect(()=>{let cancelled=false;const file=accFiles[0];setFileAccessions([]);setFileAccError("");if(!file){setReadingAccessions(false);return;}
+    setReadingAccessions(true);
+    Promise.resolve().then(async()=>{if(file.size>MAX_SELECTION_BYTES)throw new Error("Accession list exceeds 1 MB.");const refs=[...new Set((await file.text()).split(/[\s,;]+/).map(x=>x.trim().toUpperCase()).filter(Boolean))];if(!refs.length||refs.length>MAX_REFERENCES||refs.some(x=>!ACCESSION.test(x)))throw new Error("Accession files must contain 1–100 unique GCA_/GCF_ accessions.");if(!cancelled)setFileAccessions(refs);}).catch(e=>{if(!cancelled)setFileAccError(e.message||String(e));}).finally(()=>{if(!cancelled)setReadingAccessions(false);});return()=>{cancelled=true;};
+  },[accFiles]);
   const [proteinFiles, setProteinFiles] = useState<File[]>([]);
   const [genbankFiles, setGenbankFiles] = useState<File[]>([]);
   const [genomeFiles, setGenomeFiles] = useState<File[]>([]);
@@ -49,10 +61,10 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
 
   // Parse pasted accessions into a clean list.
   const pastedAccessions = useMemo(
-    () => accText.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean),
+    () => [...new Set(accText.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean))],
     [accText],
   );
-  const accCount = accMode === "paste" ? pastedAccessions.length : (accFiles.length ? 1 : 0);
+  const accCount = accMode === "paste" ? pastedAccessions.length : fileAccessions.length;
 
   const totalBytes = useMemo(
     () => [...accFiles, ...proteinFiles, ...genbankFiles, ...genomeFiles, ...koFiles, ...pfamFiles]
@@ -89,7 +101,8 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
   const hasAnyInput =
     accCount > 0 || proteinFiles.length > 0 || genbankFiles.length > 0 || genomeFiles.length > 0;
   const geneSetOk = !!geneSet;
-  const canSubmit = geneSetOk && hasAnyInput && !overCap && phase === "idle";
+  const validAccessions=accMode==="paste"?(pastedAccessions.length<=MAX_REFERENCES&&pastedAccessions.every(a=>ACCESSION.test(a))):(!fileAccError&&!readingAccessions);
+  const canSubmit = HAS_BACKEND && geneSetOk && hasAnyInput && validAccessions && !overCap && (phase === "idle" || phase === "error");
 
   const hints: string[] = [];
   if (!geneSetOk) hints.push("a single-copy gene set");
@@ -97,6 +110,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
   if (overCap) hints.push(`total data under ${capLabel}`);
 
   async function handleSubmit() {
+    if(!canSubmit)return;
     setPhase("uploading");
     setError(null);
     setProgress(null);
@@ -129,10 +143,18 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
       if (koName) items.push({ file: koFiles[0], name: koName });
       if (pfamName) items.push({ file: pfamFiles[0], name: pfamName });
 
+      let metadataFile:string|null=null;
+      if(selection&&accMode==="paste"){
+        const used=selection.genomes.filter(g=>pastedAccessions.includes(g.assembly_accession));
+        if(used.length){metadataFile="selected-genomes.json";const metadata:GenomeSelection={...selection,genomes:used};items.push({file:new File([JSON.stringify(metadata)],metadataFile,{type:"application/json"}),name:metadataFile});}
+      }
+      const names=items.map(item=>item.name);
+      if(new Set(names).size!==names.length||names.includes("form-data.txt"))throw new Error("Input filenames overlap after normalization. Rename the conflicting files before submitting.");
       const formText = buildFormData({
         name: runName.trim(),
         geneSet,
         accessionsFile: accessionsFileName,
+        metadataFile,
         proteinFiles: proteinNames,
         genbankFiles: genbankNames,
         genomeFiles: genomeNames,
@@ -166,9 +188,8 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
           <p className="mt-2 text-sm text-fg-muted max-w-2xl">
             Provide genomes as NCBI accessions, protein FASTAs, GenBank files, or
             nucleotide FASTAs, pick a single-copy gene set, and GToTree finds the
-            genes, aligns them, and infers a tree. Files go to S3 with a{" "}
-            <span className="font-mono">form-data.txt</span>; the tower runs the
-            pipeline and writes the tree back for this page to display.
+            genes, aligns them, and builds an interactive report with downloads.
+            Combine up to 100 public reference genomes with your own uploaded genomes.
           </p>
           <p className="mt-3 text-xs text-fg-faint">
             Please cite GToTree:{" "}
@@ -183,6 +204,14 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
         </div>
       </section>
 
+      <section className="panel"><div className="panel-hd"><h2 className="text-sm font-semibold">Reference genomes from Assembly Grasp</h2></div><div className="panel-bd space-y-3">
+        <p className="text-sm text-fg-muted">Your selection can transfer automatically, or you can import its downloaded JSON file.</p>
+        <label className="label">Import selection JSON<input className="field mt-2" type="file" accept=".json,application/json" onChange={e=>{void importSelection(e.target.files?.[0]);e.target.value="";}} /></label>
+        {selection&&<p role="status" className="text-sm">Imported {selection.genomes.length} reference genomes with metadata. You can edit the accession list or add your own genomes below. <button className="btn-ghost" onClick={()=>{setSelection(null);setAccText("");}}>Clear imported selection</button></p>}
+        {fileAccError&&<p role="alert" className="text-sm text-danger">{fileAccError}</p>}
+        {importError&&<p role="alert" className="text-sm text-danger">{importError}</p>}
+        {!validAccessions&&<p role="alert" className="text-sm text-danger">Use valid GCA_/GCF_ assembly accessions, with at most 100 unique references.</p>}
+      </div></section>
       {/* Result-code lookup */}
       <section className="panel">
         <div className="panel-hd">
