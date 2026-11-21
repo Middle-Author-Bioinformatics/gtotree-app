@@ -1,6 +1,8 @@
+import { DashboardRequest } from "./DashboardRequest";
+import { finalState } from "../lib/job-status";
 import { useEffect, useState } from "react";
 import {
-  artifactUrl, listResultArtifacts, deriveStatus, fetchTextArtifact,
+  artifactUrl, listResultArtifacts, deriveStatus, fetchTextArtifact, fetchJobState,
   type RunStatus, type S3ListEntry,
 } from "../lib/gtotree-config";
 import { rememberJob } from "../lib/jobStore";
@@ -24,16 +26,19 @@ export function ResultsView({ folder, onBack }: Props) {
   const [newick, setNewick] = useState<string | null>(null);
   const [logText, setLogText] = useState<string | null>(null);
   const [tab, setTab] = useState<"dashboard" | "tree" | "log" | "files">("dashboard");
+  const [jobError,setJobError]=useState("");
   const [loaded, setLoaded] = useState(false);
   const [tabInit, setTabInit] = useState(false);
   const [dlState, setDlState] = useState<"idle" | "working" | "error">("idle");
 
   async function loadAll() {
     try {
-      const objs = await listResultArtifacts(folder);
+      const [objs,job] = await Promise.all([listResultArtifacts(folder),fetchJobState(folder)]);
       setArtifacts(objs);
       setArtErr(null);
       const s = deriveStatus(folder, objs);
+      s.state=finalState(s.state,!!s.reportFile,job);
+      setJobError(job?.state==="failed"?(job.error||"Analysis failed. See the run log."):(job?.state==="complete"&&job.has_report===false?"The analysis finished without its interactive report.":""));
       setStatus(s);
       if (s.state !== "pending") {
         rememberJob({ job_id: folder, run_name: null, submitted_at: new Date().toISOString() });
@@ -45,7 +50,7 @@ export function ResultsView({ folder, onBack }: Props) {
         try { setLogText(await fetchTextArtifact(folder, s.logFile)); } catch { /* */ }
       }
       // Default to the interactive dashboard when the report exists; otherwise Tree.
-      if (!tabInit && s.state !== "pending") {
+      if ((!tabInit && s.state === "succeeded") || (!tabInit && s.state === "failed")) {
         setTab(s.reportFile ? "dashboard" : "tree");
         setTabInit(true);
       }
@@ -68,6 +73,7 @@ export function ResultsView({ folder, onBack }: Props) {
     return <PendingView folder={folder} onBack={onBack} onRefresh={loadAll} />;
   }
 
+  const copyLink = async () => {const url=new URL(window.location.href);url.hash="";url.search="";url.searchParams.set("result",folder);try{await navigator.clipboard.writeText(url.href);}catch{/* Copy code remains available. */}};
   const copyFolder = async () => { try { await navigator.clipboard.writeText(folder); } catch { /* */ } };
 
   // Master download: pull the self-contained dashboard HTML (identical to what
@@ -97,6 +103,8 @@ export function ResultsView({ folder, onBack }: Props) {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      <DashboardRequest reportCode={folder} />
+      {jobError&&<div className="panel panel-bd text-danger" role="alert">{jobError}</div>}
       <section className="panel">
         <div className="panel-bd flex flex-wrap items-center gap-3">
           <button onClick={onBack} className="btn-ghost py-1.5"><ArrowLeft size={14} /> Back</button>
@@ -122,6 +130,7 @@ export function ResultsView({ folder, onBack }: Props) {
               </button>
             )}
             <button onClick={loadAll} className="btn-ghost py-1.5" aria-label="Refresh"><RefreshCw size={14} /></button>
+            <button onClick={copyLink} className="btn-ghost py-1.5">Copy result link</button>
             <button onClick={copyFolder} className="btn-ghost py-1.5"><Copy size={14} /> Copy code</button>
           </div>
         </div>

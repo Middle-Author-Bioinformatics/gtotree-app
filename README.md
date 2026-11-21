@@ -15,7 +15,7 @@ app reads the resulting tree back from a public results bucket.
 - **Advanced GToTree options (collapsible)** — taxonomy (`-t/-D/-L`), filtering
   (`-c/-G/-B`), tree program (`-T`), KO/Pfam searches (`-K/-p`), and run settings
   (`-N/-k/-n/-M/-j/-X/-P`). Only changed values are sent; live command preview.
-- **1 GB total upload cap** enforced client-side.
+- **100 MiB total upload cap** enforced client-side and checked by the worker.
 - **Interactive results dashboard** — the results page has a **Dashboard** tab
   that embeds a self-contained interactive report (styled like the MAB DESeq
   report) with five panels: an explorable **tree** (phylogram/cladogram/radial,
@@ -54,3 +54,7 @@ Wire the buckets + Lambda + tower per [`AWS_SETUP.md`](./AWS_SETUP.md).
 
 For research and educational use only. Please cite GToTree:
 Lee, M. D. (2019), *Bioinformatics* 35(20):4162–4164.
+
+## Assembly Grasp → GToTree integration
+
+See [ASSEMBLY_GRASP_INTEGRATION.md](ASSEMBLY_GRASP_INTEGRATION.md) for the coordinated rollout, configuration, and validation.

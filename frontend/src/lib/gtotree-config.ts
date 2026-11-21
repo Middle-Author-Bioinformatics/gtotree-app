@@ -1,3 +1,4 @@
+import { validateJobState, type JobState } from "./job-status";
 // GToTree Web Server — runtime config + S3 upload/results helpers.
 //
 // Architecture (mirrors the breseq / BASIL web servers):
@@ -264,6 +265,7 @@ export interface FormDataInput {
   name: string;
   geneSet: string;
   accessionsFile?: string | null;
+  metadataFile?: string | null;
   proteinFiles: string[];
   genbankFiles: string[];
   genomeFiles: string[];
@@ -280,6 +282,7 @@ export function buildFormData(f: FormDataInput): string {
   for (const n of f.proteinFiles) lines.push(`Protein File: ${n}`);
   for (const n of f.genbankFiles) lines.push(`GenBank File: ${n}`);
   for (const n of f.genomeFiles) lines.push(`Genome File: ${n}`);
+  lines.push(`Genome Metadata File: ${f.metadataFile || "N/A"}`);
   lines.push(`KOFile: ${f.koFile?.trim() || "N/A"}`);
   lines.push(`PfamFile: ${f.pfamFile?.trim() || "N/A"}`);
   lines.push(`GtotreeFlags: ${f.gtotreeFlags.join(" ")}`);
@@ -362,6 +365,7 @@ export async function uploadRun(
   onProgress?: (p: UploadProgress) => void,
 ): Promise<void> {
   const totalBytes = items.reduce((s, it) => s + it.file.size, 0);
+  if(totalBytes>MAX_TOTAL_BYTES)throw new Error("Submission including metadata exceeds the upload-size limit.");
 
   const presign = await postJson<PresignResponse>({
     slug,
@@ -495,4 +499,12 @@ export async function fetchTextArtifact(folder: string, relPath: string): Promis
   const res = await fetch(url);
   if (!res.ok) return null;
   try { return await res.text(); } catch { return null; }
+}
+
+/** Explicit worker state takes precedence over partially uploaded artifacts. */
+export async function fetchJobState(folder: string): Promise<JobState|null> {
+  const response=await fetch(`${resultsPrefix(folder)}/status.json?_=${Date.now()}`,{cache:"no-store"});
+  if(response.status===404)return null;
+  if(!response.ok)throw new Error(`Unable to read job status (${response.status})`);
+  return validateJobState(await response.json());
 }
