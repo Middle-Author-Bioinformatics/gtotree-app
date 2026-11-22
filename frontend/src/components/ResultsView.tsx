@@ -1,6 +1,7 @@
 import { DashboardRequest } from "./DashboardRequest";
 import { finalState } from "../lib/job-status";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { isPublicResult } from "../lib/public-results";
 import {
   artifactUrl, listResultArtifacts, deriveStatus, fetchTextArtifact, fetchJobState,
   type RunStatus, type S3ListEntry,
@@ -21,54 +22,57 @@ export function ResultsView({ folder, onBack }: Props) {
   const [artifacts, setArtifacts] = useState<S3ListEntry[] | null>(null);
   const [artErr, setArtErr] = useState<string | null>(null);
   const [newick, setNewick] = useState<string | null>(null);
-  const [logText, setLogText] = useState<string | null>(null);
-  const [tab, setTab] = useState<"dashboard" | "tree" | "log" | "files">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "tree" | "files">("dashboard");
   const [jobError,setJobError]=useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [tabInit, setTabInit] = useState(false);
+  const treeCache = useRef<string | null>(null);
+  const requestNumber = useRef(0);
   const [dlState, setDlState] = useState<"idle" | "working" | "error">("idle");
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
+    const request = ++requestNumber.current;
     try {
       const [objs,job] = await Promise.all([listResultArtifacts(folder),fetchJobState(folder)]);
-      setArtifacts(objs);
+      if (request !== requestNumber.current) return null;
+      const publicFiles = objs.filter(e => isPublicResult(folder, e.key));
+      setArtifacts(publicFiles);
       setArtErr(null);
-      const s = deriveStatus(folder, objs);
+      const s = deriveStatus(folder, publicFiles);
       s.state=finalState(s.state,!!s.reportFile,job);
-      setJobError(job?.state==="failed"?(job.error||"Analysis failed. See the run log."):(job?.state==="complete"&&job.has_report===false?"The analysis finished without its interactive report.":""));
+      setJobError(job?.state==="failed"?"Analysis failed. Contact MAB with the result code.":(job?.state==="complete"&&job.has_report===false?"The analysis finished without its interactive report.":""));
       setStatus(s);
       if (s.state !== "pending") {
         rememberJob({ job_id: folder, run_name: null, submitted_at: new Date().toISOString() });
       }
-      if (s.treeFile && newick === null) {
-        try { setNewick(await fetchTextArtifact(folder, s.treeFile)); } catch { /* */ }
+      if (s.treeFile && treeCache.current !== s.treeFile) {
+        try {
+          const text = await fetchTextArtifact(folder, s.treeFile);
+          if (request === requestNumber.current && text !== null) {
+            treeCache.current = s.treeFile;
+            setNewick(text);
+          }
+        } catch { /* Retry the tree fetch on the next refresh. */ }
       }
-      if (s.logFile && logText === null) {
-        try { setLogText(await fetchTextArtifact(folder, s.logFile)); } catch { /* */ }
-      }
-      // Default to the interactive dashboard when the report exists; otherwise Tree.
-      if ((!tabInit && s.state === "succeeded") || (!tabInit && s.state === "failed")) {
-        setTab(s.reportFile ? "dashboard" : "tree");
-        setTabInit(true);
-      }
+      return s.state;
     } catch (e: any) {
-      setArtErr(String(e?.message ?? e));
+      if (request === requestNumber.current) setArtErr("Results could not be loaded. Try refreshing.");
+      return null;
     }
-  }
+  }, [folder]);
 
   useEffect(() => {
-    loadAll().finally(() => setLoaded(true));
-    const terminal = status?.state === "succeeded" || status?.state === "failed";
-    const t = setInterval(loadAll, terminal ? 30000 : 8000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folder, status?.state]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      const state = await loadAll();
+      if (!cancelled) {
+        if (state !== "succeeded" && state !== "failed") timer = setTimeout(poll, 8000);
+      }
+    }
+    void poll();
+    return () => { cancelled = true; ++requestNumber.current; clearTimeout(timer); };
+  }, [loadAll]);
 
   const artifactCount = status?.artifactCount ?? 0;
-
-  if (loaded && status?.state === "pending" && !artErr) {
-    return <PendingView folder={folder} onBack={onBack} onRefresh={loadAll} />;
-  }
 
   const copyLink = async () => {const url=new URL(window.location.href);url.hash="";url.search="";url.searchParams.set("result",folder);try{await navigator.clipboard.writeText(url.href);}catch{/* Copy code remains available. */}};
   const copyFolder = async () => { try { await navigator.clipboard.writeText(folder); } catch { /* */ } };
@@ -146,15 +150,13 @@ export function ResultsView({ folder, onBack }: Props) {
         {status?.reportFile && (
           <TabBtn label="Dashboard" active={tab === "dashboard"} onClick={() => setTab("dashboard")} />
         )}
-        <TabBtn label="Tree" active={tab === "tree"} onClick={() => setTab("tree")} />
-        <TabBtn label="Run log" active={tab === "log"} onClick={() => setTab("log")} />
+        <TabBtn label="Tree" active={tab === "tree" || (tab === "dashboard" && !status?.reportFile)} onClick={() => setTab("tree")} />
         <TabBtn label={artifactCount ? `Files · ${artifactCount}` : "Files"} active={tab === "files"} onClick={() => setTab("files")} />
       </div>
 
       {tab === "dashboard" && status?.reportFile && <DashboardTab folder={folder} reportFile={status.reportFile} />}
       {tab === "dashboard" && !status?.reportFile && <TreeTab folder={folder} status={status} newick={newick} />}
       {tab === "tree" && <TreeTab folder={folder} status={status} newick={newick} />}
-      {tab === "log" && <LogTab logText={logText} status={status} />}
       {tab === "files" && <FilesTab folder={folder} artifacts={artifacts} />}
     </div>
   );
@@ -228,29 +230,6 @@ function TreeTab({ folder, status, newick }:
   );
 }
 
-function LogTab({ logText, status }: { logText: string | null; status: RunStatus | null }) {
-  if (!status?.logFile) {
-    return (
-      <section className="panel">
-        <div className="panel-bd text-center text-sm text-fg-muted py-12">
-          No run log
-        </div>
-      </section>
-    );
-  }
-  return (
-    <section className="panel">
-      <div className="panel-hd"><h3 className="text-sm font-semibold">Run log</h3></div>
-      <div className="panel-bd">
-        <pre className="text-[11px] font-mono bg-surface-3/70 border border-border rounded-lg p-3 overflow-auto whitespace-pre-wrap"
-          style={{ maxHeight: "70vh" }}>
-          {logText ?? "Loading…"}
-        </pre>
-      </div>
-    </section>
-  );
-}
-
 function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntry[] | null }) {
   if (!artifacts) {
     return (
@@ -263,8 +242,7 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
   }
   const prefix = `${folder}/`;
   const rows = artifacts
-    .filter((e) => e.key.startsWith(prefix) && !e.key.endsWith("/"))
-    .filter((e) => !e.key.slice(prefix.length).endsWith("result.json"))
+    .filter((e) => isPublicResult(folder, e.key))
     .sort((a, b) => a.key.localeCompare(b.key));
 
   if (rows.length === 0) {
@@ -302,29 +280,6 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
         </ul>
       </div>
     </section>
-  );
-}
-
-function PendingView({ folder, onBack, onRefresh }:
-  { folder: string; onBack: () => void; onRefresh: () => void }) {
-  return (
-    <div className="space-y-5 animate-fade-in">
-      <section className="panel">
-        <div className="panel-bd flex items-center gap-3">
-          <button onClick={onBack} className="btn-ghost py-1.5">Back</button>
-          <h1 className="text-lg font-semibold truncate">{folder}</h1>
-          <div className="ml-auto flex items-center gap-2">
-            <StatePill state="pending" />
-            <button onClick={onRefresh} className="btn-ghost py-1.5">Refresh</button>
-          </div>
-        </div>
-      </section>
-      <section className="panel">
-        <div className="panel-bd text-sm text-fg-muted py-8 text-center">
-          <div className="font-medium text-fg">Awaiting results</div>
-        </div>
-      </section>
-    </div>
   );
 }
 

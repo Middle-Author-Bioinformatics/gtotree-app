@@ -2,7 +2,7 @@ export interface JobState { state: "running" | "complete" | "failed"; has_report
 export function validateJobState(data: unknown): JobState {
   const value=data as Partial<JobState>|null;
   if(!value||!["running","complete","failed"].includes(value.state||""))throw new Error("The worker returned an invalid job status.");
-  return {state:value.state!,has_report:value.has_report,error:typeof value.error==="string"?value.error.slice(0,1000):undefined};
+  return {state:value.state!,has_report:value.has_report,error:value.state==="failed"?"Analysis failed. Contact MAB with the result code.":undefined};
 }
 export function finalState(derived: "pending"|"running"|"succeeded"|"failed", reportPresent:boolean, job:JobState|null) {
   if(!job)return derived; // Older published reports remain accessible.
