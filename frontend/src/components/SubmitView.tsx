@@ -4,17 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Dropzone } from "./Dropzone";
 import { AdvancedOptions } from "./AdvancedOptions";
 import {
-  GT_CONFIG, HAS_BACKEND, MAX_TOTAL_BYTES, generateSlug, buildFormData, uploadRun,
+  HAS_BACKEND, MAX_TOTAL_BYTES, generateSlug, buildFormData, uploadRun,
   SCG_GENE_SET_GROUPS, DEFAULT_GENE_SET, INPUT_ACCEPT,
   defaultAdvancedOptions, buildGtotreeFlags,
   type UploadProgress, type UploadItem, type AdvancedOptions as AdvOpts,
 } from "../lib/gtotree-config";
 import { sanitizeName, fmtBytes } from "../lib/utils";
 import { rememberJob, normaliseJobId } from "../lib/jobStore";
-import {
-  Loader2, Rocket, CheckCircle2, AlertCircle, Search, Copy, ArrowRight,
-  Dna, Terminal, ListTree,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface Props {
   onSubmitted: (folder: string) => void;
@@ -106,7 +103,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
 
   const hints: string[] = [];
   if (!geneSetOk) hints.push("a single-copy gene set");
-  if (!hasAnyInput) hints.push("at least one genome input (accessions, protein, GenBank, or genome)");
+  if (!hasAnyInput) hints.push("genome input");
   if (overCap) hints.push(`total data under ${capLabel}`);
 
   async function handleSubmit() {
@@ -177,52 +174,21 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Hero */}
-      <section className="panel overflow-hidden bg-radial-glow">
-        <div className="px-6 py-7">
-          <div className="text-xs uppercase tracking-[0.2em] text-accent font-medium">
-            GToTree pipeline
-          </div>
-          <h1 className="mt-1 text-2xl md:text-3xl font-semibold tracking-tight">
-            Build a phylogenomic tree
-          </h1>
-          <p className="mt-2 text-sm text-fg-muted max-w-2xl">
-            Provide genomes as NCBI accessions, protein FASTAs, GenBank files, or
-            nucleotide FASTAs, pick a single-copy gene set, and GToTree finds the
-            genes, aligns them, and builds an interactive report with downloads.
-            Combine up to 100 public reference genomes with your own uploaded genomes.
-          </p>
-          <p className="mt-3 text-xs text-fg-faint">
-            Please cite GToTree:{" "}
-            <a
-              href="https://doi.org/10.1093/bioinformatics/btz188"
-              target="_blank"
-              rel="noreferrer"
-              className="text-accent hover:underline">
-              Lee, M. D. (2019), Bioinformatics 35(20):4162–4164
-            </a>.
-          </p>
-        </div>
-      </section>
+      <h1 className="sr-only">GToTree</h1>
 
-      <section className="panel"><div className="panel-hd"><h2 className="text-sm font-semibold">Reference genomes from Assembly Grasp</h2></div><div className="panel-bd space-y-3">
-        <p className="text-sm text-fg-muted">Your selection can transfer automatically, or you can import its downloaded JSON file.</p>
+      <section className="panel"><div className="panel-hd"><h2 className="text-sm font-semibold">Assembly Grasp references</h2></div><div className="panel-bd space-y-3">
         <label className="label">Import selection JSON<input className="field mt-2" type="file" accept=".json,application/json" onChange={e=>{void importSelection(e.target.files?.[0]);e.target.value="";}} /></label>
-        {selection&&<p role="status" className="text-sm">Imported {selection.genomes.length} reference genomes with metadata. You can edit the accession list or add your own genomes below. <button className="btn-ghost" onClick={()=>{setSelection(null);setAccText("");}}>Clear imported selection</button></p>}
+        {selection&&<p role="status" className="text-sm">Imported {selection.genomes.length} reference genomes. <button className="btn-ghost" onClick={()=>{setSelection(null);setAccText("");}}>Clear selection</button></p>}
         {fileAccError&&<p role="alert" className="text-sm text-danger">{fileAccError}</p>}
         {importError&&<p role="alert" className="text-sm text-danger">{importError}</p>}
-        {!validAccessions&&<p role="alert" className="text-sm text-danger">Use valid GCA_/GCF_ assembly accessions, with at most 100 unique references.</p>}
+        {!validAccessions&&<p role="alert" className="text-sm text-danger">Invalid accession list. Maximum: 100 unique GCA_/GCF_ references.</p>}
       </div></section>
       {/* Result-code lookup */}
       <section className="panel">
         <div className="panel-hd">
           <div className="flex items-center gap-2">
-            <Search size={14} className="text-accent" />
             <div>
-              <h2 className="text-sm font-semibold">Already have a result code?</h2>
-              <p className="text-xs text-fg-muted">
-                Paste the result code from a previous submission (e.g.{" "}
-                <span className="font-mono">8fK2qPb4Xm</span>) to check progress and view the tree.
-              </p>
+              <h2 className="text-sm font-semibold">Results</h2>
             </div>
           </div>
         </div>
@@ -232,10 +198,11 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
             value={lookup}
             onChange={(e) => setLookup(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") doLookup(); }}
-            placeholder="8fK2qPb4Xm"
+            aria-label="Result code"
+            placeholder="Result code"
           />
           <button type="button" onClick={doLookup} disabled={!lookup.trim()} className="btn-ghost">
-            <Search size={14} /> View results
+            View results
           </button>
         </div>
       </section>
@@ -244,11 +211,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
       <section className="panel">
         <div className="panel-hd">
           <div>
-            <h2 className="text-sm font-semibold">1 · Run details</h2>
-            <p className="text-xs text-fg-muted">
-              A name for the output directory, and the single-copy gene (SCG) set
-              GToTree searches for (the <span className="font-mono">-H</span> target).
-            </p>
+            <h2 className="text-sm font-semibold">Run</h2>
           </div>
         </div>
         <div className="panel-bd grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -258,12 +221,12 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
               className="field"
               value={runName}
               onChange={(e) => setRunName(e.target.value)}
-              placeholder="e.g. my_genomes_tree"
+              placeholder="Run name"
             />
           </label>
           <label className="block">
             <span className="label flex items-center gap-1.5">
-              <Dna size={13} className="text-accent" /> Single-copy gene set
+              Single-copy gene set
               <span className="text-danger">*</span>
             </span>
             <select className="field" value={geneSet} onChange={(e) => setGeneSet(e.target.value)}>
@@ -281,10 +244,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
       <section className="panel">
         <div className="panel-hd flex-wrap gap-2">
           <div>
-            <h2 className="text-sm font-semibold">2 · Genome inputs</h2>
-            <p className="text-xs text-fg-muted">
-              Provide genomes in any combination of these forms. At least one is required.
-            </p>
+            <h2 className="text-sm font-semibold">Genomes</h2>
           </div>
           <div className={`ml-auto text-xs font-mono px-2.5 py-1 rounded-md border ${
             overCap ? "border-danger/40 bg-danger/10 text-danger" : "border-border bg-surface-2 text-fg-muted"
@@ -296,7 +256,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
           {/* Accessions */}
           <div>
             <div className="label flex items-center gap-2">
-              NCBI assembly accessions
+              NCBI assembly accessions (max. 100)
               <span className="text-fg-subtle font-normal">(-a)</span>
               {accCount > 0 && <span className="text-accent">· {accCount}</span>}
             </div>
@@ -309,13 +269,14 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
                 className="field font-mono min-h-[92px]"
                 value={accText}
                 onChange={(e) => setAccText(e.target.value)}
-                placeholder={"One accession per line, e.g.\nGCF_000008865.2\nGCF_000005845.2"}
+                aria-label="NCBI assembly accessions"
+                placeholder={"GCF_000008865.2\nGCF_000005845.2"}
               />
             ) : (
               <Dropzone
                 files={accFiles} setFiles={setAccFiles}
                 accept={INPUT_ACCEPT.accessions}
-                hint="Single-column file of NCBI assembly accessions (.txt)"
+                hint=".txt"
                 multiple={false}
               />
             )}
@@ -326,7 +287,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
               <div className="label">Protein FASTA files <span className="text-fg-subtle font-normal">(-A)</span></div>
               <Dropzone files={proteinFiles} setFiles={setProteinFiles}
                 accept={INPUT_ACCEPT.protein}
-                hint="Amino-acid FASTAs (.faa/.fa/.fasta) — one genome per file" multiple />
+                hint=".faa / .fa / .fasta · one genome per file" multiple />
             </div>
             <div>
               <div className="label">GenBank files <span className="text-fg-subtle font-normal">(-g)</span></div>
@@ -338,14 +299,13 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
               <div className="label">Genome FASTA files <span className="text-fg-subtle font-normal">(-f)</span></div>
               <Dropzone files={genomeFiles} setFiles={setGenomeFiles}
                 accept={INPUT_ACCEPT.genome}
-                hint="Nucleotide FASTAs (.fa/.fasta/.fna)" multiple />
+                hint=".fa / .fasta / .fna · one genome per file" multiple />
             </div>
           </div>
 
           {overCap && (
             <div className="flex items-start gap-2 text-xs text-danger">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              <span>Total data is {fmtBytes(totalBytes)}, over the {capLabel} per-run limit. Remove some files.</span>
+              <span>Upload limit exceeded: {fmtBytes(totalBytes)} / {capLabel}.</span>
             </div>
           )}
         </div>
@@ -355,8 +315,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
       <section className="panel">
         <div className="panel-hd">
           <div>
-            <h2 className="text-sm font-semibold">3 · Options</h2>
-            <p className="text-xs text-fg-muted">Advanced GToTree flags are tucked away below.</p>
+            <h2 className="text-sm font-semibold">Options</h2>
           </div>
         </div>
         <div className="panel-bd space-y-5">
@@ -369,14 +328,14 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
                 <div>
                   <div className="label">KO targets file <span className="text-fg-subtle font-normal">(-K)</span></div>
                   <Dropzone files={koFiles} setFiles={setKoFiles} accept=".txt,.tsv"
-                    hint="Single-column file of KO IDs" multiple={false} />
+                    hint="KO IDs (.txt / .tsv)" multiple={false} />
                 </div>
               )}
               {advanced.pfam_targets && (
                 <div>
                   <div className="label">Pfam targets file <span className="text-fg-subtle font-normal">(-p)</span></div>
                   <Dropzone files={pfamFiles} setFiles={setPfamFiles} accept=".txt,.tsv"
-                    hint="Single-column file of Pfam IDs" multiple={false} />
+                    hint="Pfam IDs (.txt / .tsv)" multiple={false} />
                 </div>
               )}
             </div>
@@ -385,7 +344,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
           {/* Command preview */}
           <div>
             <div className="label flex items-center gap-1.5">
-              <Terminal size={13} className="text-accent" /> Command preview
+              Command
             </div>
             <pre className="text-[11px] font-mono bg-surface-3/70 border border-border rounded-lg px-3 py-2.5 overflow-x-auto whitespace-pre-wrap break-all text-fg-muted">
               {previewCmd}
@@ -414,18 +373,11 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
                   ].filter(Boolean).join(", ") || "—"}
                 </span>
                 {phase === "idle" && !canSubmit && hints.length > 0 && (
-                  <div className="text-warn mt-1.5">still need: {hints.join(", ")}.</div>
+                  <div className="text-warn mt-1.5">Required: {hints.join(", ")}.</div>
                 )}
                 {phase === "error" && error && (
                   <div className="mt-2 flex items-start gap-2 text-danger">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
                     <span className="font-mono text-[12px] leading-snug">{error}</span>
-                  </div>
-                )}
-                {!HAS_BACKEND && (
-                  <div className="text-fg-subtle text-[11px] mt-2 leading-relaxed">
-                    Preview mode — no <code className="font-mono">VITE_GTOTREE_API_BASE</code> set.
-                    Upload will fail until the env var is configured in Amplify.
                   </div>
                 )}
               </div>
@@ -436,7 +388,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
                 className="btn-primary">
                 {phase === "uploading"
                   ? (<><Loader2 size={16} className="animate-spin" /> Uploading…</>)
-                  : (<><Rocket size={16} /> Submit run</>)}
+                  : "Submit run"}
               </button>
             </div>
           )}
@@ -456,6 +408,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
         </div>
       </section>
 
+      <p className="text-xs text-fg-faint"><a href="https://doi.org/10.1093/bioinformatics/btz188" target="_blank" rel="noreferrer" className="hover:underline">GToTree · Lee (2019), Bioinformatics</a></p>
     </div>
   );
 }
@@ -468,26 +421,20 @@ function SubmittedHero({ folder, onView }: { folder: string; onView: () => void 
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="rounded-xl bg-leaf-gradient text-accent-fg p-5 shadow-glow animate-fade-in">
+    <div className="space-y-3">
       <div className="flex items-center gap-2 mb-3">
-        <CheckCircle2 size={18} />
         <span className="font-semibold">Upload complete</span>
       </div>
       <div className="text-[10px] uppercase tracking-[0.2em] font-semibold opacity-85 mb-1">
-        Your result code
+        Result code
       </div>
       <code className="block font-mono text-xl sm:text-2xl font-bold tracking-wide break-all">{folder}</code>
-      <p className="text-xs opacity-90 mt-2 mb-4 leading-snug max-w-md">
-        Save this code — it’s how you come back to view your tree. GToTree runs can
-        take a while, depending on how many genomes you provided; the tree appears
-        here once the tower finishes.
-      </p>
       <div className="flex gap-2">
         <button onClick={copy} className="text-xs px-3 py-1.5 rounded-md bg-bg/20 hover:bg-bg/30 transition inline-flex items-center gap-1.5">
-          <Copy size={12} /> {copied ? "copied" : "copy"}
+          {copied ? "Copied" : "Copy code"}
         </button>
         <button onClick={onView} className="text-xs px-3 py-1.5 rounded-md bg-bg/20 hover:bg-bg/30 transition inline-flex items-center gap-1.5">
-          <ListTree size={12} /> view results <ArrowRight size={12} />
+          View results
         </button>
       </div>
     </div>

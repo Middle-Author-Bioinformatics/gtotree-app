@@ -24,7 +24,7 @@ test('imported reference metadata and an uploaded genome reach the actual upload
   async function choose(input,file){Object.defineProperty(input,'files',{value:[file],configurable:true});await act(async()=>{input.dispatchEvent(new dom.window.Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,0));});}
   await choose(document.querySelector('input[accept=".json,application/json"]'),new File([JSON.stringify(payload)],'selection.json',{type:'application/json'}));
   assert.match(document.body.textContent,/Imported 1 reference genomes/);
-  assert.match(document.querySelector('textarea[placeholder^="One accession"]').value,/GCF_000000001.1/);
+  assert.match(document.querySelector('textarea[aria-label="NCBI assembly accessions"]').value,/GCF_000000001.1/);
   await choose(document.querySelector('input[type=file][accept=".fa,.fasta,.fna"]'),new File(['>contig\nATGC\n'],'mine.fna'));
   await act(async()=>{[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Submit run').click();await new Promise(r=>setTimeout(r,0));});
   assert(uploaded.some(f=>f.name==='mine.fna'));
