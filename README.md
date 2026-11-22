@@ -21,7 +21,10 @@ app reads the resulting tree back from a public results bucket.
   report) with five panels: an explorable **tree** (phylogram/cladogram/radial,
   re-root, collapse/expand, highlight, export SVG/Newick), the concatenated SCG
   **alignment** viewer, an **SCG presence heatmap**, a sortable **genome QC**
-  table, and a **taxonomy sunburst**. Plus Tree / Run log / Files tabs.
+  table, and a **taxonomy sunburst**. Plus Tree / Files tabs. Refreshes preserve
+  the current tab and mounted report; automatic polling stops at a terminal state.
+- **Scientific downloads only** — logs, raw archives and internal JSON are excluded
+  from Files. Public errors do not display backend exception details.
 - **Offline report** — the same dashboard is baked to a single
   `gtotree-report.html` you can download and open in any browser offline.
 
@@ -42,6 +45,12 @@ cd frontend && npm run build   # → frontend/dist
 
 Host on AWS Amplify (monorepo; `amplify.yml` at repo root, app root `frontend`).
 Wire the buckets + Lambda + tower per [`AWS_SETUP.md`](./AWS_SETUP.md).
+
+The production worker is maintained in
+[gtotree-local](https://github.com/Middle-Author-Bioinformatics/gtotree-local).
+Deploy its companion public-results change and follow its `PUBLIC_RESULTS.md`
+cleanup steps for previously published logs/archives. The older `backend/` files
+in this repository are reference copies, not the maintained TheBelly worker.
 
 ## Layout
 

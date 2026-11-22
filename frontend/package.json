@@ -9,7 +9,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "test:selection": "node --test tests/selection.test.mjs",
     "test:ui": "node --test tests/ui.test.mjs",
-    "test:status": "node --test tests/status.test.mjs"
+    "test:status": "node --test tests/status.test.mjs",
+    "test:results": "node --test tests/results.test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

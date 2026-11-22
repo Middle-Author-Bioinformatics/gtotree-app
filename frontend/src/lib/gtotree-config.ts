@@ -1,3 +1,4 @@
+import { isPublicResult } from "./public-results";
 import { validateJobState, type JobState } from "./job-status";
 // GToTree Web Server — runtime config + S3 upload/results helpers.
 //
@@ -301,7 +302,7 @@ interface PresignResponse { slug: string; bucket: string; entries: PresignEntry[
 async function postJson<T>(payload: unknown): Promise<T> {
   if (!GT_CONFIG.apiBase) {
     throw new Error(
-      "No backend configured. Set VITE_GTOTREE_API_BASE in Amplify → Environment variables.",
+      "Upload service unavailable.",
     );
   }
   const res = await fetch(GT_CONFIG.apiBase, {
@@ -313,9 +314,7 @@ async function postJson<T>(payload: unknown): Promise<T> {
   let body: any = null;
   try { body = raw ? JSON.parse(raw) : null; } catch { /* not JSON */ }
   if (!res.ok) {
-    const detail = body?.error || body?.errorMessage || body?.message
-                 || raw.slice(0, 300) || `HTTP ${res.status}`;
-    throw new Error(`Presign Lambda call failed (${res.status}): ${detail}`);
+    throw new Error(`Upload request failed (${res.status}).`);
   }
   return body as T;
 }
@@ -453,7 +452,6 @@ export interface RunStatus {
   /** Relative path (under <folder>/) to the Newick tree file, if present. */
   treeFile?: string | null;
   alignmentFile?: string | null;
-  logFile?: string | null;
   /** Self-contained interactive dashboard baked by gtotree_report.py. */
   reportFile?: string | null;
   /** Genomes_summary_info.tsv (per-genome QC + taxonomy). */
@@ -468,7 +466,7 @@ export interface RunStatus {
 export function deriveStatus(folder: string, entries: S3ListEntry[]): RunStatus {
   const prefix = `${folder}/`;
   const rels = entries
-    .filter((e) => e.key.startsWith(prefix))
+    .filter((e) => isPublicResult(folder, e.key))
     .map((e) => e.key.slice(prefix.length))
     .filter((r) => r.length > 0);
 
@@ -476,7 +474,6 @@ export function deriveStatus(folder: string, entries: S3ListEntry[]): RunStatus 
 
   const treeFile = find(/\.(tre|tree|nwk|newick)$/i);
   const alignmentFile = find(/aligned.*\.(faa|fa|fasta)$/i) || find(/\.(aln|afa)$/i);
-  const logFile = find(/gtotree-?runlog\.txt$/i) || find(/run\.log$/i) || find(/\.log$/i);
   const reportFile = find(/gtotree-report\.html$/i) || find(/report\.html$/i);
   const summaryFile = find(/genomes?_summary_info\.tsv$/i) || find(/summary_info\.tsv$/i);
   const hitsFile = find(/scg_hit_counts\.tsv$/i);
@@ -486,13 +483,13 @@ export function deriveStatus(folder: string, entries: S3ListEntry[]): RunStatus 
   else if (rels.length > 0) state = "running";
 
   return {
-    folder, state, treeFile, alignmentFile, logFile,
+    folder, state, treeFile, alignmentFile,
     reportFile, summaryFile, hitsFile,
     artifactCount: rels.length,
   };
 }
 
-/** Fetch a text artifact (e.g. the Newick tree or the log) as a string. */
+/** Fetch a scientific text artifact as a string. */
 export async function fetchTextArtifact(folder: string, relPath: string): Promise<string | null> {
   if (!GT_CONFIG.publicResults) return null;
   const url = `${artifactUrl(folder, relPath)}?_=${Date.now()}`;

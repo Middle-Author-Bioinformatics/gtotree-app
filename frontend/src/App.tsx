@@ -28,6 +28,7 @@ export default function App() {
         )}
         {view.kind === "results" && (
           <ResultsView
+            key={view.folder}
             folder={view.folder}
             onBack={() => setView({ kind: "submit" })}
           />
