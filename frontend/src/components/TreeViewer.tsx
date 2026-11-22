@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { cn } from "../lib/utils";
-import { Ruler, GitBranch, Search, Download, ExternalLink } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Minimal Newick parser + SVG phylogram renderer (no external deps).
@@ -173,12 +172,12 @@ export function TreeViewer({ newick, downloadUrl }: Props) {
           <button onClick={() => setPhylogram(true)}
             className={cn("px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 transition-colors",
               phylogram ? "bg-surface text-fg shadow-panel" : "text-fg-muted hover:text-fg")}>
-            <Ruler size={12} /> Phylogram
+            Phylogram
           </button>
           <button onClick={() => setPhylogram(false)}
             className={cn("px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 transition-colors",
               !phylogram ? "bg-surface text-fg shadow-panel" : "text-fg-muted hover:text-fg")}>
-            <GitBranch size={12} /> Cladogram
+            Cladogram
           </button>
         </div>
 
@@ -189,19 +188,19 @@ export function TreeViewer({ newick, downloadUrl }: Props) {
         </div>
 
         <div className="relative ml-auto">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-subtle" />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="highlight tip…"
-            className="field py-1.5 pl-8 text-xs w-44"
+            aria-label="Highlight tip"
+            placeholder="Highlight tip"
+            className="field py-1.5 text-xs w-44"
           />
         </div>
 
         {downloadUrl && (
           <a href={downloadUrl} target="_blank" rel="noreferrer" download
             className="btn-ghost py-1.5 text-xs">
-            <Download size={13} /> Newick <ExternalLink size={11} />
+            Newick
           </a>
         )}
       </div>
@@ -217,7 +216,6 @@ export function TreeViewer({ newick, downloadUrl }: Props) {
       <p className="text-[11px] text-fg-subtle">
         {collectTips(root).length} tips ·{" "}
         {phylogram ? "branch lengths to scale" : "equal branch depths (topology only)"}.
-        Use the Files tab to download the tree, alignment, and log for use in iTOL, FigTree, etc.
       </p>
     </div>
   );

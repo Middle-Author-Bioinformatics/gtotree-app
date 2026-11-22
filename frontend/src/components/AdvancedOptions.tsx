@@ -4,7 +4,7 @@ import {
   type AdvancedOptions as AdvOpts, type GtOptionDef,
 } from "../lib/gtotree-config";
 import { cn } from "../lib/utils";
-import { ChevronDown, SlidersHorizontal, RotateCcw, Info } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 interface Props {
   options: AdvOpts;
@@ -28,19 +28,14 @@ export function AdvancedOptions({ options, setOptions, defaults }: Props) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left">
-        <SlidersHorizontal size={15} className="text-accent shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold flex items-center gap-2">
-            Advanced GToTree options
+            Advanced options
             {changed > 0 && (
               <span className="pill border-accent/40 bg-accent/10 text-accent">
                 {changed} changed
               </span>
             )}
-          </div>
-          <div className="text-xs text-fg-muted">
-            Taxonomy, filtering, tree program, and KO/Pfam. Optional —
-            defaults match a standard run.
           </div>
         </div>
         <ChevronDown
@@ -51,16 +46,13 @@ export function AdvancedOptions({ options, setOptions, defaults }: Props) {
 
       {open && (
         <div className="px-4 pb-4 pt-1 space-y-3 animate-fade-in">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] text-fg-subtle leading-relaxed max-w-xl">
-              Only values you change from their defaults are passed to GToTree.
-            </p>
+          <div className="flex items-center justify-end">
             <button
               type="button"
               onClick={resetAll}
               disabled={changed === 0}
               className="btn-ghost py-1 text-xs shrink-0">
-              <RotateCcw size={12} /> Reset
+              Reset
             </button>
           </div>
 
@@ -89,7 +81,6 @@ export function AdvancedOptions({ options, setOptions, defaults }: Props) {
                         <span className="text-accent font-mono text-[10px]">·{groupChanged}</span>
                       )}
                     </div>
-                    <div className="text-[11px] text-fg-subtle">{g.desc}</div>
                   </div>
                 </button>
                 {groupOpen && (
@@ -118,7 +109,6 @@ function OptionField({ def, value, onChange }: {
   value: number | boolean | string;
   onChange: (v: number | boolean | string) => void;
 }) {
-  const [showHelp, setShowHelp] = useState(false);
   const isDefault = def.kind === "bool"
     ? (value === true) === (def.default === true)
     : String(value) === String(def.default);
@@ -126,15 +116,8 @@ function OptionField({ def, value, onChange }: {
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[11px] font-medium truncate" title={def.flag}>{def.label}</span>
+        <span className="text-[11px] font-medium truncate" title={def.help}>{def.label}</span>
         {!isDefault && <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" title="changed from default" />}
-        <button
-          type="button"
-          onClick={() => setShowHelp((s) => !s)}
-          className="text-fg-faint hover:text-accent transition-colors shrink-0"
-          aria-label="help">
-          <Info size={12} />
-        </button>
         <span className="text-[9px] uppercase tracking-wider text-fg-faint shrink-0 font-mono">{def.flag}</span>
       </div>
 
@@ -178,11 +161,6 @@ function OptionField({ def, value, onChange }: {
         />
       )}
 
-      {showHelp && (
-        <p className="text-[10px] text-fg-subtle mt-1 leading-snug animate-fade-in">
-          <span className="font-mono text-fg-faint">{def.flag}</span> — {def.help}
-        </p>
-      )}
     </div>
   );
 }

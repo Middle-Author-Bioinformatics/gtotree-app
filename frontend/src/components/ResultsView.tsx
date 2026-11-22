@@ -9,10 +9,7 @@ import { rememberJob } from "../lib/jobStore";
 import { StatePill } from "./StatePill";
 import { TreeViewer } from "./TreeViewer";
 import { cn } from "../lib/utils";
-import {
-  ArrowLeft, Download, FileText, RefreshCw, Clock, Copy,
-  Loader2, ListTree, ScrollText, FileArchive, LayoutDashboard, ExternalLink,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface Props {
   folder: string;
@@ -107,11 +104,11 @@ export function ResultsView({ folder, onBack }: Props) {
       {jobError&&<div className="panel panel-bd text-danger" role="alert">{jobError}</div>}
       <section className="panel">
         <div className="panel-bd flex flex-wrap items-center gap-3">
-          <button onClick={onBack} className="btn-ghost py-1.5"><ArrowLeft size={14} /> Back</button>
+          <button onClick={onBack} className="btn-ghost py-1.5">Back</button>
           <div className="min-w-0">
             <h1 className="text-lg font-semibold truncate">{folder}</h1>
             <div className="text-[11px] font-mono text-fg-muted">
-              {artifactCount} artifact{artifactCount === 1 ? "" : "s"} in results bucket
+              {artifactCount} file{artifactCount === 1 ? "" : "s"}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -120,18 +117,18 @@ export function ResultsView({ folder, onBack }: Props) {
               <button
                 onClick={downloadReport}
                 disabled={dlState === "working"}
-                title="Download the full interactive dashboard as a single self-contained HTML file"
+                title="Download report HTML"
                 className="btn-primary py-1.5">
                 {dlState === "working"
                   ? <><Loader2 size={14} className="animate-spin" /> Preparing…</>
                   : dlState === "error"
-                  ? <><Download size={14} /> Retry download</>
-                  : <><Download size={14} /> Download report</>}
+                  ? "Retry download"
+                  : "Download report"}
               </button>
             )}
-            <button onClick={loadAll} className="btn-ghost py-1.5" aria-label="Refresh"><RefreshCw size={14} /></button>
+            <button onClick={loadAll} className="btn-ghost py-1.5">Refresh</button>
             <button onClick={copyLink} className="btn-ghost py-1.5">Copy result link</button>
-            <button onClick={copyFolder} className="btn-ghost py-1.5"><Copy size={14} /> Copy code</button>
+            <button onClick={copyFolder} className="btn-ghost py-1.5">Copy code</button>
           </div>
         </div>
       </section>
@@ -141,11 +138,6 @@ export function ResultsView({ folder, onBack }: Props) {
           <div className="panel-bd text-sm">
             <div className="text-danger font-medium mb-1">Could not list results</div>
             <div className="text-fg-muted"><code className="font-mono text-[11px]">{artErr}</code></div>
-            <div className="text-[11px] text-fg-subtle mt-3 leading-relaxed">
-              The results bucket needs <code className="font-mono">s3:ListBucket</code> and{" "}
-              <code className="font-mono">s3:GetObject</code> for public reads, and CORS must permit
-              GET from this origin. See <code className="font-mono">AWS_SETUP.md</code>.
-            </div>
           </div>
         </section>
       )}
@@ -173,12 +165,11 @@ function DashboardTab({ folder, reportFile }: { folder: string; reportFile: stri
   return (
     <section className="panel">
       <div className="panel-hd flex items-center gap-2">
-        <LayoutDashboard size={15} className="text-accent" />
-        <h3 className="text-sm font-semibold">Interactive dashboard</h3>
+        <h3 className="text-sm font-semibold">Dashboard</h3>
         <span className="text-xs font-mono text-fg-muted">{reportFile}</span>
         <a href={url} target="_blank" rel="noreferrer"
           className="ml-auto text-xs text-accent hover:underline inline-flex items-center gap-1">
-          <ExternalLink size={12} /> Open in new tab
+          Open in new tab
         </a>
       </div>
       <div className="panel-bd">
@@ -188,11 +179,6 @@ function DashboardTab({ folder, reportFile }: { folder: string; reportFile: stri
           className="w-full rounded-lg border border-border bg-white"
           style={{ height: "78vh" }}
         />
-        <p className="text-[11px] text-fg-subtle mt-2 leading-relaxed">
-          Explore and manipulate the tree, view the alignment, the SCG presence heatmap,
-          per-genome QC, and the taxonomy sunburst. This is the same self-contained report
-          you can download from the Files tab (<span className="font-mono">{reportFile}</span>) and open offline.
-        </p>
       </div>
     </section>
   );
@@ -208,14 +194,11 @@ function TreeTab({ folder, status, newick }:
         <div className="panel-bd text-center text-sm text-fg-muted py-12">
           {alignmentOnly ? (
             <>
-              <ListTree className="mx-auto mb-3 text-fg-faint" size={24} />
-              This run produced an alignment but no tree (no-tree mode). Download the
-              alignment from the Files tab.
+              Alignment only
             </>
           ) : (
             <>
-              <Loader2 className="mx-auto mb-3 animate-spin text-accent" size={20} />
-              GToTree is still running — the tree appears here once the Newick file is written.
+              Tree unavailable
             </>
           )}
         </div>
@@ -250,8 +233,7 @@ function LogTab({ logText, status }: { logText: string | null; status: RunStatus
     return (
       <section className="panel">
         <div className="panel-bd text-center text-sm text-fg-muted py-12">
-          <ScrollText className="mx-auto mb-3 text-fg-faint" size={22} />
-          No run log found yet.
+          No run log
         </div>
       </section>
     );
@@ -274,7 +256,7 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
     return (
       <section className="panel">
         <div className="panel-bd text-center text-sm text-fg-muted py-12">
-          <Loader2 className="mx-auto mb-3 animate-spin text-accent" size={20} /> Listing artifacts…
+          <Loader2 className="mx-auto mb-3 animate-spin text-accent" size={20} /> Loading files…
         </div>
       </section>
     );
@@ -289,7 +271,7 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
     return (
       <section className="panel">
         <div className="panel-bd text-center text-sm text-fg-muted py-12">
-          No artifacts yet — files appear here once the tower finishes.
+          No files
         </div>
       </section>
     );
@@ -304,18 +286,15 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
         <ul className="divide-y divide-border-soft">
           {rows.map((e) => {
             const rel = e.key.slice(prefix.length);
-            const isTar = /\.(tar\.gz|tgz|zip)$/i.test(rel);
             return (
               <li key={e.key} className="flex items-center justify-between gap-3 px-1 py-2">
                 <span className="text-sm font-mono truncate inline-flex items-center gap-2 min-w-0">
-                  {isTar ? <FileArchive size={13} className="text-accent shrink-0" />
-                         : <FileText size={13} className="text-accent shrink-0" />}
                   <span className="truncate">{rel}</span>
                   <span className="text-fg-subtle text-[10px] shrink-0">{fmtSize(e.size)}</span>
                 </span>
                 <a href={artifactUrl(folder, rel)} target="_blank" rel="noreferrer" download
                   className="text-xs text-accent hover:underline inline-flex items-center gap-1 shrink-0">
-                  <Download size={12} /> download
+                  Download
                 </a>
               </li>
             );
@@ -332,23 +311,17 @@ function PendingView({ folder, onBack, onRefresh }:
     <div className="space-y-5 animate-fade-in">
       <section className="panel">
         <div className="panel-bd flex items-center gap-3">
-          <button onClick={onBack} className="btn-ghost py-1.5"><ArrowLeft size={14} /> Back</button>
+          <button onClick={onBack} className="btn-ghost py-1.5">Back</button>
           <h1 className="text-lg font-semibold truncate">{folder}</h1>
           <div className="ml-auto flex items-center gap-2">
             <StatePill state="pending" />
-            <button onClick={onRefresh} className="btn-ghost py-1.5"><RefreshCw size={14} /></button>
+            <button onClick={onRefresh} className="btn-ghost py-1.5">Refresh</button>
           </div>
         </div>
       </section>
       <section className="panel">
         <div className="panel-bd text-sm text-fg-muted py-8 text-center">
-          <Clock className="mx-auto mb-3 text-accent" size={28} />
-          <div className="font-medium text-fg">Waiting for the GToTree tower to pick up this run.</div>
-          <div className="text-xs mt-2 max-w-md mx-auto leading-relaxed">
-            No results yet for <span className="font-mono">{folder}</span>. The scraper checks for new
-            uploads on a schedule, and a full GToTree run (especially with many accessions to download)
-            can take a while — refresh in a few minutes.
-          </div>
+          <div className="font-medium text-fg">Awaiting results</div>
         </div>
       </section>
     </div>
