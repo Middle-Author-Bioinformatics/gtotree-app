@@ -165,23 +165,19 @@ export function ResultsView({ folder, onBack }: Props) {
 function DashboardTab({ folder, reportFile }: { folder: string; reportFile: string }) {
   const url = artifactUrl(folder, reportFile);
   return (
-    <section className="panel">
-      <div className="panel-hd flex items-center gap-2">
-        <h3 className="text-sm font-semibold">Dashboard</h3>
-        <span className="text-xs font-mono text-fg-muted">{reportFile}</span>
+    <section aria-label="Interactive report" className="space-y-2">
+      <div className="flex justify-end">
         <a href={url} target="_blank" rel="noreferrer"
-          className="ml-auto text-xs text-accent hover:underline inline-flex items-center gap-1">
+          className="text-xs text-accent hover:underline">
           Open in new tab
         </a>
       </div>
-      <div className="panel-bd">
-        <iframe
-          src={url}
-          title="GToTree interactive dashboard"
-          className="w-full rounded-lg border border-border bg-white"
-          style={{ height: "78vh" }}
-        />
-      </div>
+      <iframe
+        src={url}
+        title="GToTree interactive dashboard"
+        className="block w-full border-0"
+        style={{ height: "78vh" }}
+      />
     </section>
   );
 }
@@ -299,3 +295,4 @@ function fmtSize(n: number): string {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return `${v.toFixed(v >= 10 ? 0 : 1)} ${u[i]}`;
 }
+
