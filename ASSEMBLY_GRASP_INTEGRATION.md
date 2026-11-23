@@ -5,7 +5,7 @@ This is a coordinated change with `assembly-grasp-app` and `gtotree-local`. It a
 ## Deployment order
 
 1. Deploy the updated `gtotree-local` worker and report assets on TheBelly. The exact existing cron command remains compatible; the long-lived worker must be restarted to load the changes. See that repo's `ASSEMBLY_GRASP_DEPLOYMENT.md`.
-2. Deploy this app with `VITE_ASSEMBLY_GRASP_ORIGINS` set to the exact TaxonSlueth HTTPS origin, or a comma-separated list if custom and Amplify origins are both used. Set `VITE_DASHBOARD_CONTACT_EMAIL` if changing the default `ark@midauthorbio.com`.
+2. Deploy this app with `VITE_ASSEMBLY_GRASP_ORIGINS` set to the exact TaxonSlueth HTTPS origin, or a comma-separated list if custom and Amplify origins are both used.
 3. Deploy TaxonSlueth with `VITE_GTOTREE_APP_URL` set to this app's deployed HTTPS URL.
 
 No upload Lambda change is needed for this milestone: it already accepts an additional JSON file. The existing S3 buckets and flat result-code layout remain in use. Do not make buckets private until the separate authenticated delivery layer and frontend are ready; this PR does **not** supply that account/privacy layer.
@@ -24,7 +24,7 @@ New jobs read `status.json`: running/failed states take precedence over partiall
 
 These are the existing public/code-based reports, not private account-based sharing. Shared Cognito identity, report ownership, revocable share permissions, and a central report history remain separate work before an account-based public launch.
 
-The inquiry button opens a short form and prepares an email to the configured address with the result code, name, email, lab/institution, and requested dashboard features. It explicitly tells users they must send the email; the app does not claim a request has been submitted or enroll them in marketing. No scientific files are automatically attached. The offline report also has a mailto inquiry action. Saving requests centrally requires the later cloud endpoint/admin setup.
+The inquiry button opens https://midauthorbio.com/#contactdash in a new tab. It does not launch an email client or submit a request itself. Dashboard projects start at $999, with final pricing quoted after scope review. The website form handles the inquiry; no report code or scientific files are sent automatically. The legacy VITE_DASHBOARD_CONTACT_EMAIL setting is no longer used.
 
 ## Tests
 
