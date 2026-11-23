@@ -10,7 +10,7 @@ export function useGenomeImport() {
     if(!nonce)return;
     const allowed=(import.meta.env.VITE_ASSEMBLY_GRASP_ORIGINS as string|undefined)||"";
     if(!/^[a-zA-Z0-9-]{16,128}$/.test(nonce)||!allowedOrigin(source,allowed)||!window.opener){
-      setImportError("Automatic transfer is not available from this origin. Download the selection JSON in Assembly Grasp and import it below.");return;
+      setImportError("Automatic transfer is not available from this origin. Download the selection JSON in TaxonSlueth and import it below.");return;
     }
     const parent=window.opener;
     const receive=(event:MessageEvent)=>{

@@ -176,7 +176,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
       {/* Hero */}
       <h1 className="sr-only">GToTree</h1>
 
-      <section className="panel"><div className="panel-hd"><h2 className="text-sm font-semibold">Assembly Grasp references</h2></div><div className="panel-bd space-y-3">
+      <section className="panel"><div className="panel-hd"><h2 className="text-sm font-semibold">TaxonSlueth references</h2></div><div className="panel-bd space-y-3">
         <label className="label">Import selection JSON<input className="field mt-2" type="file" accept=".json,application/json" onChange={e=>{void importSelection(e.target.files?.[0]);e.target.value="";}} /></label>
         {selection&&<p role="status" className="text-sm">Imported {selection.genomes.length} reference genomes. <button className="btn-ghost" onClick={()=>{setSelection(null);setAccText("");}}>Clear selection</button></p>}
         {fileAccError&&<p role="alert" className="text-sm text-danger">{fileAccError}</p>}

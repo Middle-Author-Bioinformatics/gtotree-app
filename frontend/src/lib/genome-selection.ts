@@ -14,7 +14,7 @@ export function validateSelection(input: unknown): GenomeSelection {
   const d = input as Partial<GenomeSelection> | null;
   if (!d || d.version !== 1 || d.source !== "assembly-grasp" || !Array.isArray(d.genomes) ||
       d.genomes.length < 1 || d.genomes.length > MAX_REFERENCES) {
-    throw new Error("Choose between 1 and 100 Assembly Grasp reference genomes.");
+    throw new Error("Choose between 1 and 100 TaxonSlueth reference genomes.");
   }
   const seen = new Set<string>();
   const genomes = d.genomes.map(row => {
