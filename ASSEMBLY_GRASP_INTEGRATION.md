@@ -1,12 +1,12 @@
-# Assembly Grasp references + uploaded genomes
+# TaxonSlueth references + uploaded genomes
 
 This is a coordinated change with `assembly-grasp-app` and `gtotree-local`. It adds a validated v1 reference-selection import, public metadata retention, the shared MAB theme, explicit worker completion states, copyable result links, and a prominent **Request a dashboard for my lab** action.
 
 ## Deployment order
 
 1. Deploy the updated `gtotree-local` worker and report assets on TheBelly. The exact existing cron command remains compatible; the long-lived worker must be restarted to load the changes. See that repo's `ASSEMBLY_GRASP_DEPLOYMENT.md`.
-2. Deploy this app with `VITE_ASSEMBLY_GRASP_ORIGINS` set to the exact Assembly Grasp HTTPS origin, or a comma-separated list if custom and Amplify origins are both used. Set `VITE_DASHBOARD_CONTACT_EMAIL` if changing the default `ark@midauthorbio.com`.
-3. Deploy Assembly Grasp with `VITE_GTOTREE_APP_URL` set to this app's deployed HTTPS URL.
+2. Deploy this app with `VITE_ASSEMBLY_GRASP_ORIGINS` set to the exact TaxonSlueth HTTPS origin, or a comma-separated list if custom and Amplify origins are both used. Set `VITE_DASHBOARD_CONTACT_EMAIL` if changing the default `ark@midauthorbio.com`.
+3. Deploy TaxonSlueth with `VITE_GTOTREE_APP_URL` set to this app's deployed HTTPS URL.
 
 No upload Lambda change is needed for this milestone: it already accepts an additional JSON file. The existing S3 buckets and flat result-code layout remain in use. Do not make buckets private until the separate authenticated delivery layer and frontend are ready; this PR does **not** supply that account/privacy layer.
 

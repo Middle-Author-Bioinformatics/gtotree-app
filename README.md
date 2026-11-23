@@ -64,6 +64,6 @@ in this repository are reference copies, not the maintained TheBelly worker.
 For research and educational use only. Please cite GToTree:
 Lee, M. D. (2019), *Bioinformatics* 35(20):4162–4164.
 
-## Assembly Grasp → GToTree integration
+## TaxonSlueth → GToTree integration
 
 See [ASSEMBLY_GRASP_INTEGRATION.md](ASSEMBLY_GRASP_INTEGRATION.md) for the coordinated rollout, configuration, and validation.
