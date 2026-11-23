@@ -24,7 +24,7 @@ New jobs read `status.json`: running/failed states take precedence over partiall
 
 These are the existing public/code-based reports, not private account-based sharing. Shared Cognito identity, report ownership, revocable share permissions, and a central report history remain separate work before an account-based public launch.
 
-The inquiry button opens https://midauthorbio.com/#contact in a new tab. It does not launch an email client or submit a request itself. Dashboard projects start at $999, with final pricing quoted after scope review. The website form handles the inquiry; no report code or scientific files are sent automatically. The legacy VITE_DASHBOARD_CONTACT_EMAIL setting is no longer used.
+The inquiry button opens https://midauthorbio.com/#contactdash in a new tab. It does not launch an email client or submit a request itself. Dashboard projects start at $999, with final pricing quoted after scope review. The website form handles the inquiry; no report code or scientific files are sent automatically. The legacy VITE_DASHBOARD_CONTACT_EMAIL setting is no longer used.
 
 ## Tests
 

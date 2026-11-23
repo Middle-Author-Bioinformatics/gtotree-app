@@ -42,7 +42,7 @@ test('poll completion and manual refresh preserve the chosen view and mounted re
   const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
   const inquiry=[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Request a dashboard for my lab');
   assert(inquiry);
-  assert.equal(inquiry.href,'https://midauthorbio.com/#contact');
+  assert.equal(inquiry.href,'https://midauthorbio.com/#contactdash');
   assert.equal(inquiry.target,'_blank');
   assert.equal(document.querySelector('dialog'),null,'contact uses the website instead of an email form');
   assert(![...document.querySelectorAll('a')].some(a=>a.protocol==='mailto:'));

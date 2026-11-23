@@ -4,7 +4,7 @@ CTA: **Request a dashboard for my lab**
 
 Pricing: **Custom dashboards from $999. Final pricing depends on scope.**
 
-The CTA links to https://midauthorbio.com/#contact. No email client, report files or account are needed. The existing website contact form has not been changed by this frontend update.
+The CTA links to https://midauthorbio.com/#contactdash. No email client, report files or account are needed. The existing website contact form has not been changed by this frontend update.
 
 ## Suggested website form
 
