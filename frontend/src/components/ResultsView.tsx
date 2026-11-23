@@ -104,7 +104,7 @@ export function ResultsView({ folder, onBack }: Props) {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <DashboardRequest reportCode={folder} />
+      <DashboardRequest />
       {jobError&&<div className="panel panel-bd text-danger" role="alert">{jobError}</div>}
       <section className="panel">
         <div className="panel-bd flex flex-wrap items-center gap-3">

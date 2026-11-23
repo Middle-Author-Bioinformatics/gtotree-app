@@ -40,6 +40,13 @@ test('poll completion and manual refresh preserve the chosen view and mounted re
   root=createRoot(document.getElementById('root'));
   await act(async()=>{root.render(React.createElement(ResultsView,{folder:'Example123',onBack(){}}));await new Promise(r=>originalTimeout(r,0));});
   const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+  const inquiry=[...document.querySelectorAll('a')].find(a=>a.textContent.trim()==='Request a dashboard for my lab');
+  assert(inquiry);
+  assert.equal(inquiry.href,'https://midauthorbio.com/#contact');
+  assert.equal(inquiry.target,'_blank');
+  assert.equal(document.querySelector('dialog'),null,'contact uses the website instead of an email form');
+  assert(![...document.querySelectorAll('a')].some(a=>a.protocol==='mailto:'));
+  assert.match(document.body.textContent,/from \$999\. Final pricing depends on scope/);
   const files=()=>[...document.querySelectorAll('button')].find(b=>/^Files/.test(b.textContent.trim()));
   assert.equal(button('Run log'),undefined);
   assert.equal(polls.length,1);
