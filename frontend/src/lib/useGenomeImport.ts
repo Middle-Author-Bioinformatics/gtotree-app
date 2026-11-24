@@ -18,6 +18,10 @@ export function useGenomeImport(persistForLogin=false) {
       setImportError("Automatic transfer is not available from this origin. Download the selection JSON in TaxonSlueth and import it below.");return;
     }
     const parent=window.opener;
+    let finishTransfer:()=>void=()=>{};
+    const transferred=new Promise<void>(resolve=>{finishTransfer=resolve;});
+    const beforeSignIn=(event:Event)=>{(event as CustomEvent<{waitUntil:(task:Promise<void>)=>void}>).detail.waitUntil(transferred);};
+    if(persistForLogin)window.addEventListener('mab-before-sign-in',beforeSignIn);
     const receive=(event:MessageEvent)=>{
       if(event.origin!==source||event.source!==parent||event.data?.type!=="mab:genome-selection"||event.data?.nonce!==nonce)return;
       try{
@@ -27,11 +31,12 @@ export function useGenomeImport(persistForLogin=false) {
         parent.postMessage({type:"mab:gtotree-imported",nonce},source);
         window.removeEventListener("message",receive);
         history.replaceState(null,"",window.location.pathname+window.location.search);
+        finishTransfer();window.removeEventListener('mab-before-sign-in',beforeSignIn);
       }catch(e){setImportError(e instanceof Error?e.message:String(e));}
     };
     window.addEventListener("message",receive);
     parent.postMessage({type:"mab:gtotree-ready",nonce},source);
-    return()=>window.removeEventListener("message",receive);
+    return()=>{window.removeEventListener("message",receive);window.removeEventListener('mab-before-sign-in',beforeSignIn);finishTransfer();};
   },[]);
   return {selection,setSelection,importError,setImportError};
 }

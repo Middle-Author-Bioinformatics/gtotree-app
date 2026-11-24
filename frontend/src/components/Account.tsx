@@ -11,14 +11,15 @@ export function AccountProvider({children}:{children:ReactNode}){
   async function loadProfile(){setBusy(true);setError('');try{setData(await accountJson<ProfileResult>('/profile'));setEditing(false);}catch{setError('Your account could not be loaded. Please try again.');}finally{setBusy(false);}}
   useEffect(()=>{
     if(!ACCOUNT_CLIENT){setBusy(false);return;}
-    let active=true;
-    const signedOut=()=>{setUser(null);setData(null);setBusy(false);setError('');};
+    let active=true,initialized=false,userSub:string|undefined;
+    const signedOut=()=>{userSub=undefined;setUser(null);setData(null);setBusy(false);setError('');setEditing(false);setAdminView(false);};
     const required=()=>{setEditing(true);};
     window.addEventListener('mab-sign-in-required',signedOut);window.addEventListener('mab-profile-required',required);
-    const loaded=(next:User)=>{if(active)setUser(next);};
+    const loaded=(next:User)=>{if(!active||!initialized)return;setUser(next);if(userSub!==next.profile.sub){userSub=next.profile.sub;setData(null);setAdminView(false);setEditing(false);void loadProfile();}};
     accountManager().events.addUserLoaded(loaded);
-    void initializeAccount().then(async next=>{if(!active)return;if(!next){setBusy(false);return;}setUser(next);await loadProfile();}).catch(()=>{if(active){setError('Sign-in could not be completed. Please try again.');setBusy(false);}});
-    return()=>{active=false;window.removeEventListener('mab-sign-in-required',signedOut);window.removeEventListener('mab-profile-required',required);accountManager().events.removeUserLoaded(loaded);};
+    accountManager().events.addUserUnloaded?.(signedOut);
+    void initializeAccount().then(async next=>{if(!active)return;initialized=true;if(!next){setBusy(false);return;}userSub=next.profile.sub;setUser(next);await loadProfile();}).catch(()=>{if(active){setError('Sign-in could not be completed. Please try again.');setBusy(false);}});
+    return()=>{active=false;window.removeEventListener('mab-sign-in-required',signedOut);window.removeEventListener('mab-profile-required',required);accountManager().events.removeUserLoaded(loaded);accountManager().events.removeUserUnloaded?.(signedOut);};
   },[]);
   return <AccountContext.Provider value={{user,data,busy,error,editing,adminView,reload:loadProfile,edit:()=>setEditing(true),users:()=>setAdminView(true),close:()=>{setEditing(false);setAdminView(false);}}}>{children}</AccountContext.Provider>;
 }

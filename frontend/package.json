@@ -11,7 +11,7 @@
     "test:ui": "node --test tests/ui.test.mjs",
     "test:status": "node --test tests/status.test.mjs",
     "test:results": "node --test tests/results.test.mjs",
-    "test:accounts": "node --test tests/account.test.mjs tests/profile-ui.test.mjs tests/protected-results.test.mjs tests/auth-handoff.test.mjs tests/registration.test.mjs"
+    "test:accounts": "node --test tests/account.test.mjs tests/profile-ui.test.mjs tests/protected-results.test.mjs tests/auth-handoff.test.mjs tests/registration.test.mjs tests/persistent-session.test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
