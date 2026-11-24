@@ -1,37 +1,41 @@
 # Embedded and full-page MAB apps
 
-The apps support both iframe embeds such as `midauthorbio.com/#fegenie` and their existing standalone URLs. Cognito's sign-in pages cannot be displayed inside an iframe: the browser blocks their `frame-ancestors 'none'` policy. Do not weaken that policy.
+Both iframe embeds on midauthorbio.com and direct app URLs are supported. Cognito sign-in pages cannot be framed. They can also disconnect their popup from the opening iframe: the popup then has no opener and its old WindowProxy can appear closed. Shared storage/BroadcastChannel cannot be assumed across first-party and embedded storage partitions.
 
-## Embedded behavior
+## Embedded sign-in
 
-- An existing saved account restores inside the embedded app. Refresh-token renewal uses the token endpoint, not a Cognito login iframe.
-- When no saved embedded session exists, **Sign in** opens a small top-level window. Cognito can reuse the shared MAB sign-in cookie there. **Create free account** uses the same popup flow and opens registration.
-- The popup returns to the existing registered app callback URL. `oidc-client-ts` relays that response to the opening app; the opener validates its transaction state/PKCE, exchanges the code and loads the account. The iframe stays on the original website/result route.
-- Automatic redirects and automatic sign-in popups are suppressed in an unsigned embedded app. Browsers require a user action to open a popup, so the first embedded sign-in can require one click even if the user has signed in to another MAB app. An active Cognito cookie can avoid asking for credentials again; Cognito's one-hour cookie limit still applies.
-- **Open full page** is available on the account entry and in the signed-in header controls. It opens the same app/result route in a new tab and strips OAuth callback parameters from the link. This is also the fallback when a browser blocks or isolates the sign-in window.
-- Sign-out uses a first-party app window, clears its saved credentials, visits Cognito's normal logout endpoint, and closes after returning. The embedded workspace never navigates to Cognito. If the window is blocked, the embedded session still clears and a **Finish signing out** link completes the browser sign-out.
+1. The user clicks Sign in or Create free account. A popup opens immediately, before network requests.
+2. The original iframe registers a ten-minute callback ticket with the shared account API. The read and write capabilities are independent 256-bit random secrets; the service stores only their SHA-256 hashes.
+3. The authorization request carries a separator-safe opaque state containing the ticket ID, write capability and original OIDC state. The PKCE verifier and read capability remain in the original iframe.
+4. After Cognito returns to the app's existing root callback, that page sends only the authorization code or OAuth error to the ticket. It does not exchange tokens or open a separate signed-in workspace.
+5. The original iframe polls with its read capability. A conditional DynamoDB delete delivers a completed response to one reader only. The original OIDC state is restored, and oidc-client-ts validates the transaction and completes the PKCE exchange in the iframe.
 
-Some browsers partition the embedded app's storage from its standalone storage. The popup response is processed and stored by the original iframe, so it does not depend on those two storage partitions being shared. If all embedded storage is blocked, the current window can use an in-memory session; a later reload may require another sign-in.
+This flow does not require window.opener, postMessage, BroadcastChannel, shared first-party storage or a usable WindowProxy.closed value. Cancel and a ten-minute timeout stop polling; expired records are rejected even before DynamoDB TTL cleanup. Popups may close themselves, or show a short return-to-original-tab message if closing is blocked.
 
-## Full-page behavior
+The service permits these narrow pre-login routes only for configured app origins. Secrets stay in POST bodies except for the write capability carried in OAuth state. Responses use no-store. It does not relay access tokens, refresh tokens, passwords, profiles or PKCE verifiers. All existing profile, upload, result and administrator routes still require the same verified Cognito authentication and profile checks. No browser isolation or Cognito framing protections are weakened.
 
-Direct app URLs retain the existing automatic Cognito SSO check, remembered sessions, background refresh and ordinary full-page login/logout flow. Users can choose either view. The same MAB profile, app clients and backend authorization apply in both modes.
+Saved embedded sessions continue to restore and renew through the token endpoint. Where embedded storage is blocked completely, an in-memory session works until reload. An anonymous embed does not automatically open login windows. A first embedded visit may require one Sign in click; an active shared Cognito cookie can avoid another password prompt. Cognito's existing cookie and refresh-token lifetimes still apply.
 
-## Deploy
+## Full-page access
 
-Merge the coordinated GToTree, TaxonSleuth, FeGenie, breseq and BASIL PRs. Amplify's existing automatic main deployments apply the fix. Then refresh the website page so its iframe loads the new app build.
+Direct URLs keep the existing redirect-based Cognito flow, saved sessions and refresh behavior. Open full page remains available in embedded account screens and header controls. The website embeds and root Cognito callback/logout URLs do not need to change. Existing embedded sign-out uses a first-party sign-out window and a full-page fallback.
 
-No changes to Cognito callback/sign-out allow-lists, Lambda, CloudShell or The Belly are required. The popup uses each app's already-registered root callback and sign-out URLs. The public website's existing embeds can remain unchanged.
+## Deploy this update
 
-If an embed has a `sandbox` attribute, its owner must allow scripts, same-origin storage and popups, including allowing popups to escape the sandbox so Cognito can load normally. The observed FeGenie embed on midauthorbio.com currently has no sandbox attribute. Embedded app responses must also remain permitted by the website's own iframe policies.
+Merge the coordinated frontend PRs, including the shared-service changes in gtotree-app. Let Amplify deploy all five frontends. Then, in AWS CloudShell, from your gtotree-app checkout:
+
+```bash
+git pull --ff-only
+bash accounts/update-popup-relay.sh
+```
+
+The update script reads the currently deployed mab-accounts stack parameters and preserves its app clients, origin allow-list, bucket settings and app configuration. It deploys the new code, a TTL-enabled popup table, and table-scoped IAM permissions. It does not rerun client setup, private-bucket cutover or frontend configuration. An old account service cannot handle the new tickets, so embedded sign-in will not complete until this update finishes; full-page sign-in remains available meanwhile.
+
+No changes on The Belly are needed. No new Cognito callback URLs are needed. Refresh the website once both frontend and shared-service deployments finish.
 
 ## Verify after deployment
 
-1. Open `midauthorbio.com/#fegenie` in a fresh browser session. It should show the app's account screen without a blocked Cognito frame.
-2. Select Sign in. Complete sign-in in the new window; it should close and the original embedded app should show the workspace/profile form.
-3. Repeat with Create free account and a test registration. The required profile fields remain unchanged.
-4. While the shared Cognito browser session is active, sign in to a second embedded MAB app. The popup should return without requiring credentials again.
-5. Reopen an already-used embedded app and check its saved session, refresh behavior, result links and reports.
-6. Test Open full page, then test both embedded and standalone sign-out. If popups are blocked, check the full-page/finish-sign-out links.
-
-The code tests model independent popup/opener storage, actual OIDC popup callbacks, blocked storage/windows and embedded UI state. Live credentials and browser-specific popup/cookie behavior still require the post-deployment checks above.
+- Open midauthorbio.com/#taxonsleuth. Select Sign in, finish Cognito login, and verify that the original iframe shows the workspace. A separate signed-in full-page window is not the success criterion.
+- Repeat with FeGenie and a second app, and check free account creation with the required profile fields.
+- Verify saved sessions, result links, the TaxonSleuth-to-GToTree handoff, Cancel, Open full page and sign-out.
+- Test in Chrome and Safari with default privacy settings. A live account sign-in after deployment is still needed; automated tests simulate severed opener references and independent storage.
