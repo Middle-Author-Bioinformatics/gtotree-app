@@ -77,9 +77,11 @@ function maxDepth(n: Node, cur = 0, useLen = true): number {
 interface Props {
   newick: string;
   downloadUrl?: string;
+  onDownload?: () => Promise<void>;
 }
 
-export function TreeViewer({ newick, downloadUrl }: Props) {
+export function TreeViewer({ newick, downloadUrl, onDownload }: Props) {
+  const [downloading,setDownloading]=useState(false),[downloadFailed,setDownloadFailed]=useState(false);
   const [phylogram, setPhylogram] = useState(true); // branch lengths vs cladogram
   const [zoom, setZoom] = useState(1);
   const [filter, setFilter] = useState("");
@@ -197,7 +199,7 @@ export function TreeViewer({ newick, downloadUrl }: Props) {
           />
         </div>
 
-        {downloadUrl && (
+        {onDownload?<button className="btn-ghost py-1.5 text-xs" disabled={downloading} onClick={async()=>{setDownloading(true);setDownloadFailed(false);try{await onDownload();}catch{setDownloadFailed(true);}finally{setDownloading(false);}}}>{downloading?'Preparing…':downloadFailed?'Retry download':'Newick'}</button>:downloadUrl && (
           <a href={downloadUrl} target="_blank" rel="noreferrer" download
             className="btn-ghost py-1.5 text-xs">
             Newick
@@ -220,3 +222,4 @@ export function TreeViewer({ newick, downloadUrl }: Props) {
     </div>
   );
 }
+

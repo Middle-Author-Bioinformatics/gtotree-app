@@ -67,3 +67,11 @@ Lee, M. D. (2019), *Bioinformatics* 35(20):4162–4164.
 ## TaxonSlueth → GToTree integration
 
 See [ASSEMBLY_GRASP_INTEGRATION.md](ASSEMBLY_GRASP_INTEGRATION.md) for the coordinated rollout, configuration, and validation.
+
+# Shared MAB account integration
+
+See [COGNITO_DEPLOYMENT.md](COGNITO_DEPLOYMENT.md) for the Cognito/profile API,
+Amplify configuration and final private-storage cutover. Account mode is disabled
+until its environment variables are configured; merging alone does not make
+existing S3 links private.
+

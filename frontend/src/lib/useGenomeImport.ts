@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { allowedOrigin, validateSelection, type GenomeSelection } from "./genome-selection";
 
-export function useGenomeImport() {
-  const [selection,setSelection]=useState<GenomeSelection|null>(null);
+const PENDING_IMPORT='mab-pending-genome-import-v1';
+export function useGenomeImport(persistForLogin=false) {
+  const [selection,setSelection]=useState<GenomeSelection|null>(()=>{
+    if(persistForLogin)return null;
+    try{const saved=window.sessionStorage.getItem(PENDING_IMPORT);return saved?validateSelection(JSON.parse(saved)):null;}catch{return null;}
+  });
   const [importError,setImportError]=useState("");
   useEffect(()=>{
+    if(!persistForLogin)try{window.sessionStorage.removeItem(PENDING_IMPORT);}catch{/* Selection is already in component state. */}
     const params=new URLSearchParams(window.location.hash.slice(1));
     const nonce=params.get("mab-import"),source=params.get("source")||"";
     if(!nonce)return;
@@ -16,7 +21,9 @@ export function useGenomeImport() {
     const receive=(event:MessageEvent)=>{
       if(event.origin!==source||event.source!==parent||event.data?.type!=="mab:genome-selection"||event.data?.nonce!==nonce)return;
       try{
-        const parsed=validateSelection(event.data.selection);setSelection(parsed);setImportError("");
+        const parsed=validateSelection(event.data.selection);
+        if(persistForLogin)window.sessionStorage.setItem(PENDING_IMPORT,JSON.stringify(parsed));
+        setSelection(parsed);setImportError("");
         parent.postMessage({type:"mab:gtotree-imported",nonce},source);
         window.removeEventListener("message",receive);
         history.replaceState(null,"",window.location.pathname+window.location.search);
@@ -28,3 +35,4 @@ export function useGenomeImport() {
   },[]);
   return {selection,setSelection,importError,setImportError};
 }
+

@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Shared MAB profiles and authenticated GToTree access (existing Cognito pool).
+Parameters:
+  UserPoolId:
+    Type: String
+    Default: us-east-2_VzCBot5S3
+  ClientIds:
+    Type: String
+    Default: 6k3o2d5gtns534fcuqdkqgbto8
+  CognitoDomain:
+    Type: String
+    Default: https://us-east-2vzcbot5s3.auth.us-east-2.amazoncognito.com
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://main.d3kklav1el26h6.amplifyapp.com
+  InputBucket:
+    Type: String
+    Default: midauthorbio-gtotree-input
+  ResultsBucket:
+    Type: String
+    Default: midauthorbio-gtotree-results
+  ArtifactBucket:
+    Type: String
+  ArtifactKey:
+    Type: String
+Resources:
+  Profiles:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}]
+      KeySchema: [{AttributeName: user_id, KeyType: HASH}]
+      SSESpecification: {SSEEnabled: true}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+  Events:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: user_id, AttributeType: S}, {AttributeName: event_id, AttributeType: S}]
+      KeySchema: [{AttributeName: user_id, KeyType: HASH}, {AttributeName: event_id, KeyType: RANGE}]
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
+  Jobs:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: result_code, AttributeType: S}]
+      KeySchema: [{AttributeName: result_code, KeyType: HASH}]
+      SSESpecification: {SSEEnabled: true}
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}
+      Policies:
+        - PolicyName: MABAccounts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents']
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:Scan']
+                Resource: !GetAtt Profiles.Arn
+              - Effect: Allow
+                Action: ['dynamodb:PutItem']
+                Resource: [!GetAtt Events.Arn, !GetAtt Jobs.Arn]
+              - Effect: Allow
+                Action: ['s3:ListBucket']
+                Resource: [!Sub 'arn:${AWS::Partition}:s3:::${InputBucket}', !Sub 'arn:${AWS::Partition}:s3:::${ResultsBucket}']
+              - Effect: Allow
+                Action: ['s3:GetObject']
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ResultsBucket}/*'
+              - Effect: Allow
+                Action: ['s3:PutObject']
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${InputBucket}/*'
+  Api:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: handler.handler
+      Role: !GetAtt Role.Arn
+      MemorySize: 512
+      Timeout: 120
+      ReservedConcurrentExecutions: 10
+      Code: {S3Bucket: !Ref ArtifactBucket, S3Key: !Ref ArtifactKey}
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPoolId
+          CLIENT_IDS: !Ref ClientIds
+          COGNITO_DOMAIN: !Ref CognitoDomain
+          ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
+          PROFILES_TABLE: !Ref Profiles
+          EVENTS_TABLE: !Ref Events
+          JOBS_TABLE: !Ref Jobs
+          INPUT_BUCKET: !Ref InputBucket
+          RESULTS_BUCKET: !Ref ResultsBucket
+  ApiUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref Api
+      AuthType: NONE
+      InvokeMode: RESPONSE_STREAM
+  UrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref Api
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Api
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+Outputs:
+  AccountApiUrl:
+    Value: !GetAtt ApiUrl.FunctionUrl
+  ProfilesTable:
+    Value: !Ref Profiles
+  EventsTable:
+    Value: !Ref Events
+  ApiFunction:
+    Value: !Ref Api
