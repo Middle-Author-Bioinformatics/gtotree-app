@@ -2,6 +2,7 @@ import {UserManager,WebStorageStateStore,type User} from 'oidc-client-ts';
 import {ACCOUNT_POOL,ACCOUNT_CLIENT,ACCOUNT_DOMAIN,safeReturnTo} from './account-config';
 let manager:UserManager|undefined;
 export function accountManager():UserManager {
+  if(!ACCOUNT_CLIENT)throw new Error('Account client is not configured.');
   if(!manager)manager=new UserManager({
     authority:`https://cognito-idp.${ACCOUNT_POOL.split('_')[0]}.amazonaws.com/${ACCOUNT_POOL}`,
     client_id:ACCOUNT_CLIENT,redirect_uri:window.location.origin+'/',response_type:'code',scope:'openid email profile',
@@ -15,12 +16,20 @@ export function initializeAccount():Promise<User|null> {
   if(!initialization)initialization=(async()=>{
     const mgr=accountManager(),params=new URLSearchParams(window.location.search);
     if(params.has('state')&&(params.has('code')||params.has('error'))){
-      try{const user=await mgr.signinRedirectCallback();window.history.replaceState({},'',safeReturnTo((user.state as {returnTo?:unknown})?.returnTo));return user;}
+      try{const user=await mgr.signinRedirectCallback();window.history.replaceState({},'',safeReturnTo((user.state as {returnTo?:unknown})?.returnTo));window.dispatchEvent(new Event('hashchange'));return user;}
       catch{window.history.replaceState({},'','/');throw new Error('Sign-in could not be completed. Please try again.');}
     }
     return mgr.getUser();
   })();
   return initialization;
+}
+export async function createFreeAccount(){
+  const mgr=accountManager();
+  const metadata=await mgr.metadataService.getMetadata();
+  // Cognito's documented /signup endpoint takes the same OAuth/PKCE parameters.
+  // Keep the library's state store and verifier so the ordinary callback validates it.
+  const signup=new UserManager({...mgr.settings,metadata:{...metadata,authorization_endpoint:ACCOUNT_DOMAIN+'/signup'}});
+  return signup.signinRedirect({state:{returnTo:safeReturnTo(window.location.href)}});
 }
 export function signIn(){return accountManager().signinRedirect({state:{returnTo:safeReturnTo(window.location.href)}});}
 let renewal:Promise<User>|undefined;

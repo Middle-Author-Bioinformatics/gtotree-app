@@ -1,9 +1,8 @@
 import {createContext,useContext,useEffect,useState,type ReactNode,type FormEvent} from 'react';
 import type {User} from 'oidc-client-ts';
-import {ACCOUNT_ENABLED,ACCOUNT_API,POSITIONS,validApiBase} from '../lib/account-config';
-import {accountManager,initializeAccount,signIn,signOut} from '../lib/account-session';
+import {ACCOUNT_ENABLED,ACCOUNT_API,ACCOUNT_CLIENT,POSITIONS,validApiBase} from '../lib/account-config';
+import {accountManager,initializeAccount,createFreeAccount,signIn,signOut} from '../lib/account-session';
 import {accountJson,csvCell,type Profile,type ProfileResult} from '../lib/account-api';
-import {Header} from './Header';
 
 interface AccountState {user:User|null;data:ProfileResult|null;busy:boolean;error:string;editing:boolean;adminView:boolean;reload:()=>Promise<void>;edit:()=>void;users:()=>void;close:()=>void;}
 const AccountContext=createContext<AccountState|null>(null);
@@ -11,6 +10,7 @@ export function AccountProvider({children}:{children:ReactNode}){
   const [user,setUser]=useState<User|null>(null),[data,setData]=useState<ProfileResult|null>(null),[busy,setBusy]=useState(true),[error,setError]=useState(''),[editing,setEditing]=useState(false),[adminView,setAdminView]=useState(false);
   async function loadProfile(){setBusy(true);setError('');try{setData(await accountJson<ProfileResult>('/profile'));setEditing(false);}catch{setError('Your account could not be loaded. Please try again.');}finally{setBusy(false);}}
   useEffect(()=>{
+    if(!ACCOUNT_CLIENT){setBusy(false);return;}
     let active=true;
     const signedOut=()=>{setUser(null);setData(null);setBusy(false);setError('');};
     const required=()=>{setEditing(true);};
@@ -28,19 +28,24 @@ export function AccountControls(){
   if(!account?.user)return null;
   return <div className="relative"><button className="btn-ghost" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>Account</button>{open&&<div className="absolute right-0 top-full mt-2 p-2 bg-surface border border-border rounded-md shadow-lg min-w-40 z-40 flex flex-col gap-1" onKeyDown={event=>{if(event.key==='Escape')setOpen(false);}}><button className="btn-ghost text-left" onClick={()=>{setOpen(false);account.edit();}}>Profile</button>{account.data?.admin&&<button className="btn-ghost text-left" onClick={()=>{setOpen(false);account.users();}}>Users</button>}<button className="btn-ghost text-left" onClick={()=>void signOut()}>Sign out</button></div>}</div>;
 }
-export function AccountGate({children}:{children:ReactNode}){
+export function AccountGate({children,header}:{children:ReactNode;header?:ReactNode}){
   const account=useContext(AccountContext);
   if(!ACCOUNT_ENABLED)return <>{children}</>;
   if(!account)throw new Error('Account provider missing');
   let content;
-  if(!validApiBase(ACCOUNT_API))content=<p role="alert">Account service unavailable.</p>;
+  if(!validApiBase(ACCOUNT_API)||!ACCOUNT_CLIENT)content=<p role="alert">Account service unavailable.</p>;
   else if(account.busy)content=<p role="status">Loading account…</p>;
-  else if(!account.user)content=<section className="panel panel-bd max-w-lg mx-auto space-y-4"><h1 className="text-xl font-semibold">MAB account</h1>{account.error&&<p role="alert">{account.error}</p>}<button className="btn-primary" onClick={()=>void signIn()}>Sign in or create account</button></section>;
+  else if(!account.user)content=<AccountEntry error={account.error}/>;
   else if(account.error)content=<section className="panel panel-bd" role="alert">{account.error} <button className="btn-ghost" onClick={()=>void account.reload()}>Retry</button></section>;
   else if(!account.data?.complete||account.editing)content=<ProfileForm account={account}/>;
   else if(account.adminView)content=<AdminUsers onBack={account.close}/>;
   else return <>{children}</>;
-  return <div className="min-h-full"><Header/><main className="max-w-7xl mx-auto px-6 py-8">{content}</main></div>;
+  return <div className="min-h-full mab-account-shell">{header}<main className="max-w-7xl mx-auto px-6 py-8">{content}</main></div>;
+}
+function AccountEntry({error}:{error:string}){
+  const [busy,setBusy]=useState(false),[failure,setFailure]=useState('');
+  async function enter(register:boolean){setBusy(true);setFailure('');try{await (register?createFreeAccount():signIn());}catch{setFailure('Sign-in is unavailable. Please try again.');}finally{setBusy(false);}}
+  return <section className="panel panel-bd max-w-lg mx-auto space-y-4"><h1 className="text-xl font-semibold">MAB account</h1>{(failure||error)&&<p role="alert">{failure||error}</p>}<div className="flex gap-3"><button className="btn-primary" disabled={busy} onClick={()=>void enter(true)}>Create free account</button><button className="btn-ghost" disabled={busy} onClick={()=>void enter(false)}>Sign in</button></div></section>;
 }
 function ProfileForm({account}:{account:AccountState}){
   const data=account.data,initial=data?.profile;

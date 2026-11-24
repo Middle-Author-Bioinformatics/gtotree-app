@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Shared MAB profiles and authenticated GToTree access (existing Cognito pool).
+Description: Shared MAB profiles and authenticated access across five apps (existing Cognito pool).
 Parameters:
   UserPoolId:
     Type: String
@@ -19,10 +19,27 @@ Parameters:
   ResultsBucket:
     Type: String
     Default: midauthorbio-gtotree-results
+  AppConfig:
+    Type: String
+    Default: '{}'
+  AppListArns:
+    Type: CommaDelimitedList
+    Default: arn:aws:s3:::midauthorbio-gtotree-results
+  AppReadArns:
+    Type: CommaDelimitedList
+    Default: arn:aws:s3:::midauthorbio-gtotree-results/*
+  AppWriteArns:
+    Type: CommaDelimitedList
+    Default: arn:aws:s3:::midauthorbio-gtotree-input/*
+  TaxonSearchArn:
+    Type: String
+    Default: arn:aws:lambda:us-east-2:000000000000:function:unconfigured
   ArtifactBucket:
     Type: String
   ArtifactKey:
     Type: String
+Conditions:
+  HasExtraApps: !Not [!Equals [!Ref AppConfig, '{}']]
 Resources:
   Profiles:
     Type: AWS::DynamoDB::Table
@@ -61,6 +78,17 @@ Resources:
         Statement:
           - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: 'sts:AssumeRole'}
       Policies:
+        - !If
+          - HasExtraApps
+          - PolicyName: AdditionalApps
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: ['s3:ListBucket'], Resource: !Ref AppListArns}
+                - {Effect: Allow, Action: ['s3:GetObject'], Resource: !Ref AppReadArns}
+                - {Effect: Allow, Action: ['s3:PutObject'], Resource: !Ref AppWriteArns}
+                - {Effect: Allow, Action: ['lambda:InvokeFunction'], Resource: !Ref TaxonSearchArn}
+          - !Ref AWS::NoValue
         - PolicyName: MABAccounts
           PolicyDocument:
             Version: '2012-10-17'
@@ -95,6 +123,7 @@ Resources:
       Code: {S3Bucket: !Ref ArtifactBucket, S3Key: !Ref ArtifactKey}
       Environment:
         Variables:
+          APP_CONFIG: !Ref AppConfig
           USER_POOL_ID: !Ref UserPoolId
           CLIENT_IDS: !Ref ClientIds
           COGNITO_DOMAIN: !Ref CognitoDomain
