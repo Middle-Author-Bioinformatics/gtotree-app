@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {HttpError,CODE,scientificFile,completeProfile,profileFields,uploadFiles} from './policy.mjs';
 import {createAppRoutes} from './apps.mjs';
+import {createPopupRoutes} from './popup.mjs';
 
 function json(status,data,headers={}) {return {status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...headers},body:status===204?'':JSON.stringify(data)};}
 function bodyOf(event) {
@@ -18,8 +19,12 @@ export function createService({authenticate,store,objects,origins,apps={},search
       if(origin&&!origins.includes(origin))throw new HttpError(403,'origin_denied','Origin not allowed.');
       const method=event.requestContext?.http?.method??'';
       if(method==='OPTIONS')return json(204,null,{...cors,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, POST, OPTIONS'});
-      const identity=await authenticate(headers);
       const path=event.rawPath??'/';
+      if(path.startsWith('/oauth/popup/')){
+        const result=await createPopupRoutes({store})({path,method,body:bodyOf(event),origin,json,cors});
+        if(result)return result;
+      }
+      const identity=await authenticate(headers);
       const profile=await store.getProfile(identity.sub);
       const complete=completeProfile(profile,identity);
       if(path==='/profile'&&method==='GET')return json(200,{identity:{name:identity.name,email:identity.email},profile:profile??null,complete,admin:identity.admin},cors);
@@ -76,9 +81,11 @@ export function createService({authenticate,store,objects,origins,apps={},search
     }catch(error) {
       if(error instanceof HttpError)return json(error.status,{code:error.code,error:error.message},cors);
       if(['NoSuchKey','NotFound'].includes(error.name))return json(404,{code:'not_found',error:'File not found.'},cors);
+      if(error.name==='ConditionalCheckFailedException'&&(event.rawPath??'').startsWith('/oauth/popup/'))return json(409,{code:'popup_unavailable',error:'Sign-in response already used or unavailable.'},cors);
       if(error.name==='ConditionalCheckFailedException')return json(409,{code:'code_exists',error:'This result code already exists. Start a new submission.'},cors);
       console.error('accounts_request_failed',error.name);
       return json(500,{code:'service_error',error:'The service is temporarily unavailable.'},cors);
     }
   };
 }
+

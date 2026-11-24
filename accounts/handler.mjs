@@ -4,7 +4,7 @@ import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {S3Client,ListObjectsV2Command,GetObjectCommand} from '@aws-sdk/client-s3';
 import {DynamoDBClient} from '@aws-sdk/client-dynamodb';
-import {DynamoDBDocumentClient,GetCommand,PutCommand,ScanCommand,UpdateCommand} from '@aws-sdk/lib-dynamodb';
+import {DynamoDBDocumentClient,GetCommand,PutCommand,ScanCommand,UpdateCommand,DeleteCommand} from '@aws-sdk/lib-dynamodb';
 import {presignUpload} from './uploads.mjs';
 import {makeAuthenticate} from './auth.mjs';
 import {createService} from './service.mjs';
@@ -12,6 +12,11 @@ import {HttpError} from './policy.mjs';
 
 const env=process.env,s3=new S3Client({requestChecksumCalculation:'WHEN_REQUIRED'}),db=DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const store={
+  async createPopup(item){await db.send(new PutCommand({TableName:env.POPUPS_TABLE,Item:item,ConditionExpression:'attribute_not_exists(popup_id)'}));},
+  async getPopup(id){return (await db.send(new GetCommand({TableName:env.POPUPS_TABLE,Key:{popup_id:id},ConsistentRead:true}))).Item;},
+  async finishPopup(id,origin,hash,state,response,at){await db.send(new UpdateCommand({TableName:env.POPUPS_TABLE,Key:{popup_id:id},UpdateExpression:'SET #response=:response',ConditionExpression:'#origin=:origin AND write_hash=:hash AND #state=:state AND expires_at>:at AND attribute_not_exists(#response)',ExpressionAttributeNames:{'#origin':'origin','#state':'state','#response':'response'},ExpressionAttributeValues:{':origin':origin,':hash':hash,':state':state,':response':response,':at':at}}));},
+  async takePopup(id,origin,hash,at){return (await db.send(new DeleteCommand({TableName:env.POPUPS_TABLE,Key:{popup_id:id},ConditionExpression:'#origin=:origin AND read_hash=:hash AND expires_at>:at AND attribute_exists(#response)',ExpressionAttributeNames:{'#origin':'origin','#response':'response'},ExpressionAttributeValues:{':origin':origin,':hash':hash,':at':at},ReturnValues:'ALL_OLD'}))).Attributes;},
+  async deletePopup(id,origin,hash,at){await db.send(new DeleteCommand({TableName:env.POPUPS_TABLE,Key:{popup_id:id},ConditionExpression:'#origin=:origin AND read_hash=:hash AND expires_at>:at',ExpressionAttributeNames:{'#origin':'origin'},ExpressionAttributeValues:{':origin':origin,':hash':hash,':at':at}}));},
   async getProfile(sub){return (await db.send(new GetCommand({TableName:env.PROFILES_TABLE,Key:{user_id:sub},ConsistentRead:true}))).Item;},
   async saveProfile(identity,fields){
     // Update selected fields without letting client input replace counters or roles.
@@ -66,3 +71,4 @@ export const handler=awslambda.streamifyResponse(async(event,responseStream)=>{
   const output=awslambda.HttpResponseStream.from(responseStream,{statusCode:result.status,headers:result.headers});
   await pipeline(result.body instanceof Readable?result.body:Readable.from([result.body??'']),output);
 });
+

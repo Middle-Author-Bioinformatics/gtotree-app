@@ -3,6 +3,7 @@ import type {User} from 'oidc-client-ts';
 import {ACCOUNT_ENABLED,ACCOUNT_API,ACCOUNT_CLIENT,POSITIONS,validApiBase} from '../lib/account-config';
 import {accountManager,initializeAccount,createFreeAccount,signIn,signOut} from '../lib/account-session';
 import {accountJson,csvCell,type Profile,type ProfileResult} from '../lib/account-api';
+import {isPopupLanding,cancelPopupSignIn} from '../lib/account-popup';
 import {isEmbedded,standaloneUrl,logoutStartUrl,SIGNOUT_BLOCKED} from '../lib/account-window';
 
 interface AccountState {user:User|null;data:ProfileResult|null;busy:boolean;error:string;editing:boolean;adminView:boolean;reload:()=>Promise<void>;edit:()=>void;users:()=>void;close:()=>void;}
@@ -35,6 +36,7 @@ export function AccountControls(){
 export function AccountGate({children,header}:{children:ReactNode;header?:ReactNode}){
   const account=useContext(AccountContext);
   if(!ACCOUNT_ENABLED)return <>{children}</>;
+  if(isPopupLanding())return <main className="p-6"><p role="status">{account?.error?'Sign-in could not be returned to the app. Close this window and try again.':account?.busy?'Completing sign-in…':new URLSearchParams(window.location.search).has('mab-popup-done')?'Return to your original tab. You can close this window.':'Opening sign-in…'}</p></main>;
   if(!account)throw new Error('Account provider missing');
   let content;
   if(!validApiBase(ACCOUNT_API)||!ACCOUNT_CLIENT)content=<p role="alert">Account service unavailable.</p>;
@@ -49,7 +51,7 @@ export function AccountGate({children,header}:{children:ReactNode;header?:ReactN
 function AccountEntry({error}:{error:string}){
   const [busy,setBusy]=useState(false),[failure,setFailure]=useState('');
   async function enter(register:boolean){setBusy(true);setFailure('');try{await (register?createFreeAccount():signIn());}catch{setFailure('Sign-in is unavailable. Please try again.');}finally{setBusy(false);}}
-  return <section className="panel panel-bd max-w-lg mx-auto space-y-4"><h1 className="text-xl font-semibold">MAB account</h1>{(failure||error)&&<p role="alert">{failure||error}</p>}<div className="flex gap-3"><button className="btn-primary" disabled={busy} onClick={()=>void enter(true)}>Create free account</button><button className="btn-ghost" disabled={busy} onClick={()=>void enter(false)}>Sign in</button></div>{isEmbedded()&&<div className="text-sm space-y-2"><p>Sign-in opens in a separate window.</p><a className="text-accent underline" href={error===SIGNOUT_BLOCKED?logoutStartUrl():standaloneUrl()} target="_blank" rel="noopener noreferrer">{error===SIGNOUT_BLOCKED?'Finish signing out':'Open full page'}</a></div>}</section>;
+  return <section className="panel panel-bd max-w-lg mx-auto space-y-4"><h1 className="text-xl font-semibold">MAB account</h1>{(failure||error)&&<p role="alert">{failure||error}</p>}<div className="flex gap-3"><button className="btn-primary" disabled={busy} onClick={()=>void enter(true)}>Create free account</button><button className="btn-ghost" disabled={busy} onClick={()=>void enter(false)}>Sign in</button>{busy&&isEmbedded()&&<button className="btn-ghost" onClick={cancelPopupSignIn}>Cancel</button>}</div>{isEmbedded()&&<div className="text-sm space-y-2"><p>Sign-in opens in a separate window.</p><a className="text-accent underline" href={error===SIGNOUT_BLOCKED?logoutStartUrl():standaloneUrl()} target="_blank" rel="noopener noreferrer">{error===SIGNOUT_BLOCKED?'Finish signing out':'Open full page'}</a></div>}</section>;
 }
 function ProfileForm({account}:{account:AccountState}){
   const data=account.data,initial=data?.profile;
@@ -73,3 +75,4 @@ function AdminUsers({onBack}:{onBack:()=>void}){
   function download(){const columns=['name','email','institution','position','favorite_software','research_area','created_at','last_seen','last_app'] as const;const csv=[columns.map(csvCell).join(','),...users.map(user=>columns.map(key=>csvCell(user[key])).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='mab-users.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   return <section className="panel panel-bd space-y-4"><div className="flex flex-wrap items-center gap-3"><button className="btn-ghost" onClick={onBack}>Back</button><h1 className="text-xl font-semibold">MAB users</h1><button className="btn-ghost ml-auto" onClick={download} disabled={!users.length||busy}>Export loaded users</button></div>{error&&<p role="alert">{error}</p>}<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{['Name','Email','Institution','Position','Software','Research area','Last active'].map(label=><th key={label} className="text-left p-2">{label}</th>)}</tr></thead><tbody>{users.map(user=><tr key={user.email}>{[user.name,user.email,user.institution,user.position,user.favorite_software,user.research_area,user.last_seen].map((value,i)=><td key={i} className="p-2">{value||'—'}</td>)}</tr>)}</tbody></table></div>{cursor&&<button className="btn-ghost" disabled={busy} onClick={()=>void load(cursor)}>Load more</button>}{busy&&<p role="status">Loading…</p>}</section>;
 }
+

@@ -70,6 +70,14 @@ Resources:
       AttributeDefinitions: [{AttributeName: result_code, AttributeType: S}]
       KeySchema: [{AttributeName: result_code, KeyType: HASH}]
       SSESpecification: {SSEEnabled: true}
+  Popups:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{AttributeName: popup_id, AttributeType: S}]
+      KeySchema: [{AttributeName: popup_id, KeyType: HASH}]
+      SSESpecification: {SSEEnabled: true}
+      TimeToLiveSpecification: {AttributeName: expires_at, Enabled: true}
   Role:
     Type: AWS::IAM::Role
     Properties:
@@ -100,6 +108,9 @@ Resources:
                 Action: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:Scan']
                 Resource: !GetAtt Profiles.Arn
               - Effect: Allow
+                Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem']
+                Resource: !GetAtt Popups.Arn
+              - Effect: Allow
                 Action: ['dynamodb:PutItem']
                 Resource: [!GetAtt Events.Arn, !GetAtt Jobs.Arn]
               - Effect: Allow
@@ -128,6 +139,7 @@ Resources:
           CLIENT_IDS: !Ref ClientIds
           COGNITO_DOMAIN: !Ref CognitoDomain
           ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
+          POPUPS_TABLE: !Ref Popups
           PROFILES_TABLE: !Ref Profiles
           EVENTS_TABLE: !Ref Events
           JOBS_TABLE: !Ref Jobs
@@ -162,3 +174,4 @@ Outputs:
     Value: !Ref Events
   ApiFunction:
     Value: !Ref Api
+

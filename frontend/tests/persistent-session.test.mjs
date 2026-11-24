@@ -31,7 +31,7 @@ async function harness(t,{url='https://app.example/?result=Example123#/results/E
     throw new Error('Unexpected request '+url);
   };
   const directory=await mkdtemp(fileURLToPath(new URL('./.session-',import.meta.url)));
-  await build({entryPoints:[fileURLToPath(new URL('../src/lib/account-session.ts',import.meta.url))],bundle:true,format:'esm',platform:'node',packages:'external',outfile:directory+'/session.mjs',define:{'import.meta.env':JSON.stringify({VITE_MAB_CLIENT_ID:client,VITE_MAB_COGNITO_DOMAIN:'https://accounts.example'})},logLevel:'silent'});
+  await build({entryPoints:[fileURLToPath(new URL('../src/lib/account-session.ts',import.meta.url))],bundle:true,format:'esm',platform:'node',packages:'external',outfile:directory+'/session.mjs',define:{'import.meta.env':JSON.stringify({VITE_MAB_API_BASE:'https://relay.example',VITE_MAB_CLIENT_ID:client,VITE_MAB_COGNITO_DOMAIN:'https://accounts.example'})},logLevel:'silent'});
   const api=await import(pathToFileURL(directory+'/session.mjs'));
   t.after(async()=>{api.accountManager().stopSilentRenew();await api.accountManager().events.unload();dom.window.close();await rm(directory,{recursive:true,force:true});});
   return {api,win,navigations,requests,setLocation,dom};
@@ -127,35 +127,47 @@ test('embedded saved sessions still restore and renew without any popup',async t
   assert.equal((await h.api.initializeAccount()).access_token,'embedded-new');assert.equal(h.navigations.length,0);
 });
 async function embeddedPopup(t,register=false,storageBlocked=false){
-  const h=await harness(t,{embedded:true,storageBlocked,tabBlocked:storageBlocked,fetcher:(url,options)=>{
+  const transactions=new Map();let tokenExchanges=0;
+  const fetcher=(url,options)=>{
+    if(String(url).startsWith('https://relay.example/oauth/popup/')){
+      const action=String(url).split('/').pop(),body=JSON.parse(options.body);
+      assert.equal(options.method,'POST');assert.equal(options.credentials,'omit');assert(!String(url).includes(body.secret));
+      if(action==='start'){transactions.set(body.id,{state:body.state});return json({expires_at:Math.floor(Date.now()/1000)+600},201);}
+      const item=transactions.get(body.id);
+      if(action==='finish'){assert.equal(body.state,item.state);item.code=body.code;return json({delivered:true});}
+      if(action==='read')return json(item?.code?{ready:true,state:item.state,code:item.code}:{ready:false});
+      if(action==='cancel'){transactions.delete(body.id);return new Response(null,{status:204});}
+    }
     assert.equal(new URLSearchParams(options.body).get('grant_type'),'authorization_code');
-    assert(new URLSearchParams(options.body).get('code_verifier'));
+    assert(new URLSearchParams(options.body).get('code_verifier'));tokenExchanges++;
     return json({access_token:'popup-access',refresh_token:'popup-refresh',id_token:jwt(profile),token_type:'Bearer',expires_in:3600});
-  }});
+  };
+  const h=await harness(t,{embedded:true,storageBlocked,tabBlocked:storageBlocked,fetcher});
   assert.equal(await h.api.initializeAccount(),null);
-  let opened=false,destination;const popup={closed:false,focus(){},close(){this.closed=true;},location:{replace(url){destination=new URL(url);}}};
-  t.after(()=>popup.close());
-  h.win.open=()=>{opened=true;assert.equal(h.requests.length,0,'the popup opens before metadata/network requests');return popup;};
+  let opened=false,destination;const popup={closed:false,focus(){},close(){},location:{replace(url){destination=new URL(url);}}};
+  // Cognito isolation appears as closed=true to the iframe; there is no opener or channel.
+  Object.defineProperty(popup,'closed',{get(){return Boolean(destination);}});
+  h.win.open=(initial)=>{opened=true;assert(initial.includes('mab-popup-wait'));assert.equal(h.requests.length,0);return popup;};
   const signIn=register?h.api.createFreeAccount():h.api.signIn();
-  assert(opened,'open during the user click, before the first async wait');
+  assert(opened,'open synchronously before metadata/network requests');
   for(let i=0;i<30&&!destination;i++)await new Promise(resolve=>setTimeout(resolve,5));
   assert(destination);assert.equal(destination.pathname,register?'/signup':'/oauth2/authorize');assert.equal(destination.searchParams.get('code_challenge_method'),'S256');
-  assert.equal(destination.searchParams.get('redirect_uri'),'https://app.example/');assert(destination.searchParams.get('state').endsWith(';mab-popup-v1'));
-  const callback='https://app.example/?code=popup-code&state='+encodeURIComponent(destination.searchParams.get('state'));
-  const spoof=new Event('message');Object.assign(spoof,{origin:'https://evil.example',source:popup,data:{source:'oidc-client',url:callback}});h.win.dispatchEvent(spoof);
-  const wrongState=new Event('message');Object.assign(wrongState,{origin:'https://app.example',source:{},data:{source:'oidc-client',url:'https://app.example/?code=forged&state=wrong'}});h.win.dispatchEvent(wrongState);
-  await new Promise(resolve=>setTimeout(resolve,0));assert.equal(h.requests.filter(r=>r.url.endsWith('/token')).length,0);
-  const callbackWindow={location:{origin:'https://app.example',href:callback},opener:{postMessage(data,origin){
-    assert.equal(origin,'https://app.example');queueMicrotask(()=>{globalThis.window=h.win;
-    const message=new Event('message');Object.assign(message,{data,origin,source:popup});h.win.dispatchEvent(message);});
-  }}};
-  globalThis.window=callbackWindow;await h.api.accountManager().signinPopupCallback(callback);globalThis.window=h.win;
-  await signIn;assert(popup.closed);assert.equal(await h.api.accessToken(),'popup-access');assert.equal(h.navigations.length,0);assert.equal(h.win.location.hash,'#/results/Example123');
+  assert.equal(destination.searchParams.get('redirect_uri'),'https://app.example/');
+  assert.match(destination.searchParams.get('state'),/^mabpopup2\.[a-f0-9]{64}\.[a-f0-9]{64}\.[a-f0-9]{32}$/);
+  assert.equal(destination.searchParams.get('state').includes(';'),false);
+  // A separate first-party callback module has completely independent storage and no opener.
+  const callback=await harness(t,{url:'https://app.example/?code=popup-code&state='+destination.searchParams.get('state'),fetcher});
+  callback.win.opener=null;let closed=false;callback.win.close=()=>{closed=true;};
+  assert.equal(await callback.api.initializeAccount(),null);assert(closed);assert.equal(callback.win.location.search,'?mab-popup-done=1');
+  assert.equal(callback.win.localStorage.getItem(key),null,'callback must never become a separately signed-in app');
+  globalThis.window=h.win;
+  await signIn;assert.equal(await h.api.accessToken(),'popup-access');assert.equal(tokenExchanges,1);
+  assert.equal(h.navigations.length,0);assert.equal(h.win.location.hash,'#/results/Example123');
   return h;
 }
-test('embedded sign-in uses the real OIDC popup callback and stores tokens in the opening iframe',async t=>{await embeddedPopup(t);});
-test('embedded registration returns to the original iframe and updates the main account manager',async t=>{await embeddedPopup(t,true);});
-test('embedded sign-in still works when a browser blocks both persistent and tab storage',async t=>{await embeddedPopup(t,false,true);});
+test('embedded sign-in completes with a severed opener and partitioned callback storage',async t=>{await embeddedPopup(t);});
+test('embedded registration updates the original account when Cognito isolates its popup',async t=>{await embeddedPopup(t,true);});
+test('isolated popup sign-in still works with all embedded storage blocked',async t=>{await embeddedPopup(t,false,true);});
 test('popup callback relays the result without looking for the opener PKCE state in its own storage',async t=>{
   const h=await harness(t,{url:'https://app.example/?code=opaque-code&state=opaque-id%3Bmab-popup-v1'}),messages=[];
   h.win.opener={postMessage(data,origin){messages.push({data,origin});}};
@@ -181,3 +193,4 @@ test('blocked logout windows still clear the embedded account and expose the ful
   h.win.open=()=>null;h.win.addEventListener('mab-account-error',event=>errors.push(event.detail));await h.api.signOut();
   assert.equal(h.win.localStorage.getItem(key),null);assert.equal(h.navigations.length,0);assert.equal(errors.length,1);assert(errors[0].includes('sign-out window was blocked'));
 });
+

@@ -18,10 +18,11 @@ zip -qr "$build_dir/accounts.zip" ./*.mjs node_modules
 artifact_key="accounts/$(sha256sum "$build_dir/accounts.zip" | cut -d' ' -f1).zip"
 aws s3 cp "$build_dir/accounts.zip" "s3://${artifact_bucket}/${artifact_key}" --only-show-errors
 parameters=()
-if [[ -f deploy-parameters.local.json ]]; then
-  while IFS= read -r -d '' parameter; do parameters+=("$parameter"); done < <(python3 - <<'PYSETTINGS'
+parameters_file=${MAB_DEPLOY_PARAMETERS_FILE:-deploy-parameters.local.json}
+if [[ -f "$parameters_file" ]]; then
+  while IFS= read -r -d '' parameter; do parameters+=("$parameter"); done < <(python3 - "$parameters_file" <<'PYSETTINGS'
 import json,sys
-for key,value in json.load(open('deploy-parameters.local.json')).items():
+for key,value in json.load(open(sys.argv[1])).items():
     sys.stdout.buffer.write((key+'='+value).encode()+b'\0')
 PYSETTINGS
 )
@@ -31,5 +32,10 @@ if ! aws cognito-idp get-group --user-pool-id us-east-2_VzCBot5S3 --group-name m
   aws cognito-idp create-group --user-pool-id us-east-2_VzCBot5S3 --group-name mab-admin --description 'MAB account administrators' >/dev/null
 fi
 api_url=$(aws cloudformation describe-stacks --stack-name mab-accounts --query "Stacks[0].Outputs[?OutputKey=='AccountApiUrl'].OutputValue" --output text)
+if [[ -n ${MAB_DEPLOY_PARAMETERS_FILE:-} ]]; then
+  printf '\nShared account service updated; existing app clients, URLs and settings were preserved.\n'
+else
 printf '\nSet these Amplify environment variables and redeploy main:\nVITE_MAB_AUTH_ENABLED=true\nVITE_MAB_API_BASE=%s\n' "${api_url%/}"
+fi
 printf '\nExisting input/results buckets and the old upload endpoint have NOT been changed.\n'
+

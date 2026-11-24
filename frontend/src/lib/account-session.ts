@@ -1,6 +1,7 @@
 import {UserManager,WebStorageStateStore,User,ErrorResponse} from 'oidc-client-ts';
 import {ACCOUNT_POOL,ACCOUNT_CLIENT,ACCOUNT_DOMAIN,safeReturnTo} from './account-config';
-import {isEmbedded,isPopupCallback,POPUP_STATE,openLogoutWindow,SIGNOUT_BLOCKED} from './account-window';
+import {RelayPopupNavigator,isRelayCallback,finishRelayCallback} from './account-popup';
+import {isEmbedded,isPopupCallback,openLogoutWindow,SIGNOUT_BLOCKED} from './account-window';
 let manager:UserManager|undefined;
 const authority=`https://cognito-idp.${ACCOUNT_POOL.split('_')[0]}.amazonaws.com/${ACCOUNT_POOL}`;
 const userKey=`user:${authority}:${ACCOUNT_CLIENT}`;
@@ -30,7 +31,7 @@ export function accountManager():UserManager {
     userStore:new WebStorageStateStore({store:persistentStorage()}),stateStore:new WebStorageStateStore({store:tabStorage()}),
     popup_redirect_uri:window.location.origin+'/',
     automaticSilentRenew:!isEmbedded(),loadUserInfo:true,
-  });
+  },undefined,isEmbedded()?new RelayPopupNavigator():undefined);
     const mgr=manager;
     mgr.events.addUserLoaded(user=>{if(persistentStorage().getItem(signedOutKey))void forgetUser();else if(user.refresh_token)mgr.startSilentRenew();else if(isEmbedded())mgr.stopSilentRenew();});
     window.addEventListener('storage',event=>{
@@ -64,7 +65,7 @@ async function redirectToAccount(check=false){
   if(check)tabStorage().setItem(checkingKey,String(Date.now()));
   else {tabStorage().removeItem(checkingKey);persistentStorage().removeItem(signedOutKey);}
   const mgr=accountManager();
-  if(isEmbedded())return mgr.signinPopup({state,url_state:POPUP_STATE,popupAbortOnClose:true,popupWindowFeatures:{width:520,height:700}});
+  if(isEmbedded())return mgr.signinPopup({state,popupWindowFeatures:{width:520,height:700}});
   return mgr.signinRedirect({state,...(check?{prompt:'none'}:{})});
 }
 let renewal:Promise<User|null>|undefined;
@@ -89,7 +90,10 @@ async function rememberedUser():Promise<User|null>{
 let initialization:Promise<User|null>|undefined;
 export function initializeAccount():Promise<User|null> {
   if(!initialization)initialization=(async()=>{
-    const mgr=accountManager(),params=new URLSearchParams(window.location.search);
+    const params=new URLSearchParams(window.location.search);
+    if(params.has('mab-popup-wait')||params.has('mab-popup-done'))return null;
+    if(isRelayCallback(params)){await finishRelayCallback();return null;}
+    const mgr=accountManager();
     if(params.get('mab-signout')==='1'&&!isEmbedded()){await signOut();return null;}
     if(isPopupCallback(params)){await mgr.signinPopupCallback();return null;}
     if(params.has('state')&&(params.has('code')||params.has('error'))){
@@ -121,11 +125,11 @@ export async function createFreeAccount(){
   const mgr=accountManager();
   // Cognito's documented /signup endpoint takes the same OAuth/PKCE parameters.
   // Keep the library's state store and verifier so the ordinary callback validates it.
-  const signup=new UserManager({...mgr.settings,metadata:undefined,metadataSeed:{...mgr.settings.metadataSeed,authorization_endpoint:ACCOUNT_DOMAIN+'/signup'}});
+  const signup=new UserManager({...mgr.settings,metadata:undefined,metadataSeed:{...mgr.settings.metadataSeed,authorization_endpoint:ACCOUNT_DOMAIN+'/signup'}},undefined,isEmbedded()?new RelayPopupNavigator():undefined);
   const state={returnTo:safeReturnTo(window.location.href)};
   if(isEmbedded()){
     try{
-      const user=await signup.signinPopup({state,url_state:POPUP_STATE,popupAbortOnClose:true,popupWindowFeatures:{width:520,height:700}});
+      const user=await signup.signinPopup({state,popupWindowFeatures:{width:520,height:700}});
       await mgr.storeUser(user);await mgr.getUser(true);return;
     }finally{signup.stopSilentRenew();await signup.events.unload();}
   }
@@ -145,3 +149,4 @@ export async function signOut(){
   if(embedded){if(!popup)window.dispatchEvent(new CustomEvent('mab-account-error',{detail:SIGNOUT_BLOCKED}));return;}
   const url=new URL(ACCOUNT_DOMAIN+'/logout');url.searchParams.set('client_id',ACCOUNT_CLIENT);url.searchParams.set('logout_uri',window.location.origin+'/');window.location.assign(url.href);
 }
+
