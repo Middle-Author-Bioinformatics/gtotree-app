@@ -12,7 +12,7 @@ type View = { kind: "submit" } | { kind: "results"; folder: string };
 
 export default function App() {
   if(!ACCOUNT_ENABLED)return <Workspace/>;
-  return <AccountProvider><GenomeImportBridge/><AccountGate><Workspace/></AccountGate></AccountProvider>;
+  return <AccountProvider><GenomeImportBridge/><AccountGate header={<Header/>}><Workspace/></AccountGate></AccountProvider>;
 }
 
 function GenomeImportBridge(){

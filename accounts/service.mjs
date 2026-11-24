@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {HttpError,CODE,scientificFile,completeProfile,profileFields,uploadFiles} from './policy.mjs';
+import {createAppRoutes} from './apps.mjs';
 
 function json(status,data,headers={}) {return {status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...headers},body:status===204?'':JSON.stringify(data)};}
 function bodyOf(event) {
@@ -9,7 +10,7 @@ function bodyOf(event) {
     const body=JSON.parse(raw);if(!body||typeof body!=='object'||Array.isArray(body))throw new Error();return body;
   }catch{throw new HttpError(400,'invalid_request','Invalid request.');}
 }
-export function createService({authenticate,store,objects,origins,now=()=>new Date().toISOString()}) {
+export function createService({authenticate,store,objects,origins,apps={},search,now=()=>new Date().toISOString()}) {
   return async event=>{
     const headers=event.headers??{},origin=headers.origin??headers.Origin;
     const cors=origin&&origins.includes(origin)?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{};
@@ -34,10 +35,12 @@ export function createService({authenticate,store,objects,origins,now=()=>new Da
         if(cursor&&(cursor.length>1000||!/^[A-Za-z0-9_-]+$/.test(cursor)))throw new HttpError(400,'invalid_cursor','Invalid cursor.');
         return json(200,await store.listProfiles(cursor),cors);
       }
-      const audit=async(action,code)=>{
-        try {await store.recordUsage(identity.sub,{action,result_code:code,app:'gtotree',at:now(),event_id:randomUUID()});}
+      const audit=async(action,code,app='gtotree')=>{
+        try {await store.recordUsage(identity.sub,{action,result_code:code,app,at:now(),event_id:randomUUID()});}
         catch{console.error('usage_record_failed');}
       };
+      const appResult=await createAppRoutes({apps,objects,store,search,now})({path,method,bodyOf:()=>bodyOf(event),identity,audit,json,cors});
+      if(appResult)return appResult;
       if(path==='/upload'&&method==='POST') {
         const body=bodyOf(event),files=uploadFiles(body);
         if(await objects.codeExists(body.slug))throw new HttpError(409,'code_exists','This result code already exists. Start a new submission.');

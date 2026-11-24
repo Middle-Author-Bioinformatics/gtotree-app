@@ -1,3 +1,5 @@
+import {LambdaClient,InvokeCommand} from '@aws-sdk/client-lambda';
+import {getSignedUrl} from '@aws-sdk/s3-request-presigner';
 import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import {S3Client,ListObjectsV2Command,GetObjectCommand} from '@aws-sdk/client-s3';
@@ -17,7 +19,7 @@ const store={
     const result=await db.send(new UpdateCommand({TableName:env.PROFILES_TABLE,Key:{user_id:identity.sub},UpdateExpression:'SET #name=:name, email=:email, institution=:institution, #position=:position, favorite_software=:software, research_area=:research, updated_at=:updated, created_at=if_not_exists(created_at,:created)',ExpressionAttributeNames:{'#name':'name','#position':'position'},ExpressionAttributeValues:values,ReturnValues:'ALL_NEW'}));
     return result.Attributes;
   },
-  async reserveJob(code,sub,at){await db.send(new PutCommand({TableName:env.JOBS_TABLE,Item:{result_code:code,user_id:sub,created_at:at,app:'gtotree'},ConditionExpression:'attribute_not_exists(result_code)'}));},
+  async reserveJob(code,sub,at,app='gtotree'){await db.send(new PutCommand({TableName:env.JOBS_TABLE,Item:{result_code:code,user_id:sub,created_at:at,app},ConditionExpression:'attribute_not_exists(result_code)'}));},
   async recordUsage(sub,event){
     await db.send(new PutCommand({TableName:env.EVENTS_TABLE,Item:{user_id:sub,...event,expires_at:Math.floor(Date.now()/1000)+90*86400}}));
     await db.send(new UpdateCommand({TableName:env.PROFILES_TABLE,Key:{user_id:sub},UpdateExpression:'SET last_seen=:at, last_app=:app',ExpressionAttributeValues:{':at':event.at,':app':event.app}}));
@@ -30,24 +32,35 @@ const store={
   }
 };
 const objects={
-  async codeExists(code){
-    for(const bucket of [env.INPUT_BUCKET,env.RESULTS_BUCKET]){
+  async codeExists(code,config={inputBucket:env.INPUT_BUCKET,resultsBucket:env.RESULTS_BUCKET}){
+    for(const bucket of [config.inputBucket,config.resultsBucket]){
       const r=await s3.send(new ListObjectsV2Command({Bucket:bucket,Prefix:code+'/',MaxKeys:1}));if(r.Contents?.length)return true;
     }return false;
   },
-  async presignUpload(code,file){
-    return presignUpload(s3,env.INPUT_BUCKET,code,file);
+  async presignUpload(code,file,config={inputBucket:env.INPUT_BUCKET}){
+    return presignUpload(s3,config.inputBucket,code,file);
   },
-  async list(code){
+  async list(code,config={resultsBucket:env.RESULTS_BUCKET}){
     const files=[];let token;
-    do{const result=await s3.send(new ListObjectsV2Command({Bucket:env.RESULTS_BUCKET,Prefix:code+'/',ContinuationToken:token}));
+    do{const result=await s3.send(new ListObjectsV2Command({Bucket:config.resultsBucket,Prefix:code+'/',ContinuationToken:token}));
       for(const file of result.Contents??[])files.push({key:file.Key,size:file.Size,last_modified:file.LastModified?.toISOString()??''});
       token=result.IsTruncated?result.NextContinuationToken:undefined;
     }while(token);return files;
   },
-  async get(code,relative){const result=await s3.send(new GetObjectCommand({Bucket:env.RESULTS_BUCKET,Key:code+'/'+relative}));return {body:result.Body,text:()=>result.Body.transformToString()};}
+  async presignRead(code,relative,config){return getSignedUrl(s3,new GetObjectCommand({Bucket:config.resultsBucket,Key:code+'/'+relative,ResponseCacheControl:'private, no-store',ResponseContentDisposition:'inline'}),{expiresIn:900});},
+  async get(code,relative,config={resultsBucket:env.RESULTS_BUCKET}){const result=await s3.send(new GetObjectCommand({Bucket:config.resultsBucket,Key:code+'/'+relative}));return {body:result.Body,text:()=>result.Body.transformToString()};}
 };
-const service=createService({authenticate:makeAuthenticate({poolId:env.USER_POOL_ID,clientIds:env.CLIENT_IDS.split(','),domain:env.COGNITO_DOMAIN}),store,objects,origins:env.ALLOWED_ORIGINS.split(',')});
+const lambda=new LambdaClient({});
+const apps=JSON.parse(env.APP_CONFIG||'{}');
+async function search(config,body){
+  const response=await lambda.send(new InvokeCommand({FunctionName:config.searchFunction,Payload:Buffer.from(JSON.stringify({rawPath:'/',headers:{},requestContext:{http:{method:'POST'}},body:JSON.stringify(body),isBase64Encoded:false}))}));
+  if(response.FunctionError)throw new Error('search_failed');
+  const result=JSON.parse(Buffer.from(response.Payload).toString());
+  if(result.statusCode!==200)throw new HttpError(result.statusCode>=400&&result.statusCode<500?result.statusCode:502,'search_failed','Search could not be completed.');
+  const headers=Object.fromEntries(Object.entries(result.headers??{}).map(([k,v])=>[k.toLowerCase(),v]));
+  return {status:200,type:headers['content-type']??'application/json',body:result.isBase64Encoded?Buffer.from(result.body,'base64'):result.body};
+}
+const service=createService({authenticate:makeAuthenticate({poolId:env.USER_POOL_ID,clientIds:env.CLIENT_IDS.split(','),domain:env.COGNITO_DOMAIN}),store,objects,apps,search,origins:env.ALLOWED_ORIGINS.split(',')});
 export const handler=awslambda.streamifyResponse(async(event,responseStream)=>{
   const result=await service(event);
   const output=awslambda.HttpResponseStream.from(responseStream,{statusCode:result.status,headers:result.headers});

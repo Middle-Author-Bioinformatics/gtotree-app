@@ -157,3 +157,7 @@ Backend tests use signed local RSA JWTs and fake services, with no AWS writes.
 CloudFormation schema checks use `cfn-lint accounts/stack.yaml`. Full deployment,
 Cognito email delivery, browser sign-in and private-bucket behavior must still
 be verified in the real AWS account during the rollout above.
+
+## Add the other MAB apps
+
+For TaxonSleuth, FeGenie, breseq and BASIL, use [MAB_ACCOUNTS_ALL_APPS.md](MAB_ACCOUNTS_ALL_APPS.md). It extends the existing stack and retains the pool and profiles.
