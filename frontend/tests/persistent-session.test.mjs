@@ -12,14 +12,15 @@ const profile={iss:issuer,aud:client,sub:'member',iat:Math.floor(Date.now()/1000
 const jwt=p=>Buffer.from('{"alg":"RS256"}').toString('base64url')+'.'+Buffer.from(JSON.stringify(p)).toString('base64url')+'.signature';
 const user=(expired=false)=>new User({id_token:jwt(profile),access_token:'access-old',refresh_token:'refresh-token',token_type:'Bearer',scope:'openid email profile',profile,expires_at:Math.floor(Date.now()/1000)+(expired?-60:3600)});
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});
-async function harness(t,{url='https://app.example/?result=Example123#/results/Example123',local,session,fetcher,storageBlocked=false}={}){
+async function harness(t,{url='https://app.example/?result=Example123#/results/Example123',local,session,fetcher,storageBlocked=false,embedded=false,tabBlocked=false}={}){
   const dom=new JSDOM('',{url}),events=new EventTarget(),navigations=[],requests=[];
   const location={};
   function setLocation(value){const next=new URL(value,location.href||url);Object.assign(location,{href:next.href,origin:next.origin,search:next.search,hash:next.hash,pathname:next.pathname});}
   setLocation(url);location.assign=value=>{navigations.push(new URL(value));events.dispatchEvent(new Event('pageshow'));};
   const win={location,sessionStorage:session||dom.window.sessionStorage,localStorage:local||dom.window.localStorage,history:{replaceState(a,b,value){setLocation(value);}},addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events),dispatchEvent:events.dispatchEvent.bind(events),stop(){}};
-  win.self=win;win.top=win;
+  win.self=win;win.top=embedded?{}:win;
   if(storageBlocked)Object.defineProperty(win,'localStorage',{get(){throw new Error('blocked');}});
+  if(tabBlocked)Object.defineProperty(win,'sessionStorage',{get(){throw new Error('blocked');}});
   Object.assign(globalThis,{window:win});
   globalThis.fetch=async(url,options={})=>{
     requests.push({url:String(url),options});
@@ -33,7 +34,7 @@ async function harness(t,{url='https://app.example/?result=Example123#/results/E
   await build({entryPoints:[fileURLToPath(new URL('../src/lib/account-session.ts',import.meta.url))],bundle:true,format:'esm',platform:'node',packages:'external',outfile:directory+'/session.mjs',define:{'import.meta.env':JSON.stringify({VITE_MAB_CLIENT_ID:client,VITE_MAB_COGNITO_DOMAIN:'https://accounts.example'})},logLevel:'silent'});
   const api=await import(pathToFileURL(directory+'/session.mjs'));
   t.after(async()=>{api.accountManager().stopSilentRenew();await api.accountManager().events.unload();dom.window.close();await rm(directory,{recursive:true,force:true});});
-  return {api,win,navigations,requests,setLocation};
+  return {api,win,navigations,requests,setLocation,dom};
 }
 
 test('a remembered account survives a new tab/revisit without OAuth; old tab sessions migrate',async t=>{
@@ -114,4 +115,69 @@ test('OAuth navigation waits for the genome handoff and saves the clean return r
   const initializing=h.api.initializeAccount();await new Promise(resolve=>setTimeout(resolve,15));assert.equal(h.navigations.length,0);
   h.setLocation('/');finish();await initializing;
   const saved=JSON.parse(h.win.sessionStorage.getItem('oidc.'+h.navigations[0].searchParams.get('state')));assert.equal(saved.data.returnTo,'/');
+});
+
+test('an embedded anonymous app never navigates its iframe to Cognito or opens an automatic popup',async t=>{
+  const h=await harness(t,{embedded:true});h.win.open=()=>{throw new Error('No automatic popups');};
+  assert.equal(await h.api.initializeAccount(),null);assert.equal(h.navigations.length,0);assert.equal(h.requests.length,0);
+});
+test('embedded saved sessions still restore and renew without any popup',async t=>{
+  const h=await harness(t,{embedded:true,fetcher:()=>json({access_token:'embedded-new',id_token:jwt(profile),expires_in:3600,token_type:'Bearer'})});
+  h.win.localStorage.setItem(key,user(true).toStorageString());h.win.open=()=>{throw new Error('No popup needed');};
+  assert.equal((await h.api.initializeAccount()).access_token,'embedded-new');assert.equal(h.navigations.length,0);
+});
+async function embeddedPopup(t,register=false,storageBlocked=false){
+  const h=await harness(t,{embedded:true,storageBlocked,tabBlocked:storageBlocked,fetcher:(url,options)=>{
+    assert.equal(new URLSearchParams(options.body).get('grant_type'),'authorization_code');
+    assert(new URLSearchParams(options.body).get('code_verifier'));
+    return json({access_token:'popup-access',refresh_token:'popup-refresh',id_token:jwt(profile),token_type:'Bearer',expires_in:3600});
+  }});
+  assert.equal(await h.api.initializeAccount(),null);
+  let opened=false,destination;const popup={closed:false,focus(){},close(){this.closed=true;},location:{replace(url){destination=new URL(url);}}};
+  t.after(()=>popup.close());
+  h.win.open=()=>{opened=true;assert.equal(h.requests.length,0,'the popup opens before metadata/network requests');return popup;};
+  const signIn=register?h.api.createFreeAccount():h.api.signIn();
+  assert(opened,'open during the user click, before the first async wait');
+  for(let i=0;i<30&&!destination;i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert(destination);assert.equal(destination.pathname,register?'/signup':'/oauth2/authorize');assert.equal(destination.searchParams.get('code_challenge_method'),'S256');
+  assert.equal(destination.searchParams.get('redirect_uri'),'https://app.example/');assert(destination.searchParams.get('state').endsWith(';mab-popup-v1'));
+  const callback='https://app.example/?code=popup-code&state='+encodeURIComponent(destination.searchParams.get('state'));
+  const spoof=new Event('message');Object.assign(spoof,{origin:'https://evil.example',source:popup,data:{source:'oidc-client',url:callback}});h.win.dispatchEvent(spoof);
+  const wrongState=new Event('message');Object.assign(wrongState,{origin:'https://app.example',source:{},data:{source:'oidc-client',url:'https://app.example/?code=forged&state=wrong'}});h.win.dispatchEvent(wrongState);
+  await new Promise(resolve=>setTimeout(resolve,0));assert.equal(h.requests.filter(r=>r.url.endsWith('/token')).length,0);
+  const callbackWindow={location:{origin:'https://app.example',href:callback},opener:{postMessage(data,origin){
+    assert.equal(origin,'https://app.example');queueMicrotask(()=>{globalThis.window=h.win;
+    const message=new Event('message');Object.assign(message,{data,origin,source:popup});h.win.dispatchEvent(message);});
+  }}};
+  globalThis.window=callbackWindow;await h.api.accountManager().signinPopupCallback(callback);globalThis.window=h.win;
+  await signIn;assert(popup.closed);assert.equal(await h.api.accessToken(),'popup-access');assert.equal(h.navigations.length,0);assert.equal(h.win.location.hash,'#/results/Example123');
+  return h;
+}
+test('embedded sign-in uses the real OIDC popup callback and stores tokens in the opening iframe',async t=>{await embeddedPopup(t);});
+test('embedded registration returns to the original iframe and updates the main account manager',async t=>{await embeddedPopup(t,true);});
+test('embedded sign-in still works when a browser blocks both persistent and tab storage',async t=>{await embeddedPopup(t,false,true);});
+test('popup callback relays the result without looking for the opener PKCE state in its own storage',async t=>{
+  const h=await harness(t,{url:'https://app.example/?code=opaque-code&state=opaque-id%3Bmab-popup-v1'}),messages=[];
+  h.win.opener={postMessage(data,origin){messages.push({data,origin});}};
+  assert.equal(await h.api.initializeAccount(),null);assert.equal(messages.length,1);assert.equal(messages[0].origin,'https://app.example');assert(messages[0].data.url.includes('opaque-code'));assert.equal(h.requests.length,0);assert.equal(h.win.localStorage.getItem(key),null);
+});
+test('a blocked sign-in popup never redirects the embedded frame to Cognito',async t=>{
+  const h=await harness(t,{embedded:true});await h.api.initializeAccount();h.win.open=()=>null;
+  await assert.rejects(h.api.signIn());assert.equal(h.navigations.length,0);assert.equal(h.win.localStorage.getItem(key),null);
+});
+test('embedded sign-out opens a first-party logout window and leaves the iframe in place',async t=>{
+  const h=await harness(t,{embedded:true});h.win.localStorage.setItem(key,user().toStorageString());await h.api.initializeAccount();
+  const opened=[],popup={closed:false,location:{origin:'https://app.example',search:'?mab-signout=1'},close(){this.closed=true;}};
+  h.win.open=url=>{opened.push(new URL(url));return popup;};await h.api.signOut();
+  assert.equal(opened[0].searchParams.get('mab-signout'),'1');assert.equal(h.win.localStorage.getItem(key),null);assert.equal(h.navigations.length,0);assert.equal(popup.closed,false);
+  popup.location.search='';await new Promise(resolve=>setTimeout(resolve,250));assert(popup.closed);
+});
+test('the first-party logout landing clears credentials before using the existing Cognito sign-out URL',async t=>{
+  const h=await harness(t,{url:'https://app.example/?mab-signout=1'});h.win.localStorage.setItem(key,user().toStorageString());
+  assert.equal(await h.api.initializeAccount(),null);assert.equal(h.win.localStorage.getItem(key),null);assert.equal(h.navigations[0].pathname,'/logout');assert.equal(h.navigations[0].searchParams.get('logout_uri'),'https://app.example/');
+});
+test('blocked logout windows still clear the embedded account and expose the full-page fallback',async t=>{
+  const h=await harness(t,{embedded:true}),errors=[];h.win.localStorage.setItem(key,user().toStorageString());await h.api.initializeAccount();
+  h.win.open=()=>null;h.win.addEventListener('mab-account-error',event=>errors.push(event.detail));await h.api.signOut();
+  assert.equal(h.win.localStorage.getItem(key),null);assert.equal(h.navigations.length,0);assert.equal(errors.length,1);assert(errors[0].includes('sign-out window was blocked'));
 });

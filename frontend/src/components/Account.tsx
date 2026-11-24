@@ -3,6 +3,7 @@ import type {User} from 'oidc-client-ts';
 import {ACCOUNT_ENABLED,ACCOUNT_API,ACCOUNT_CLIENT,POSITIONS,validApiBase} from '../lib/account-config';
 import {accountManager,initializeAccount,createFreeAccount,signIn,signOut} from '../lib/account-session';
 import {accountJson,csvCell,type Profile,type ProfileResult} from '../lib/account-api';
+import {isEmbedded,standaloneUrl,logoutStartUrl,SIGNOUT_BLOCKED} from '../lib/account-window';
 
 interface AccountState {user:User|null;data:ProfileResult|null;busy:boolean;error:string;editing:boolean;adminView:boolean;reload:()=>Promise<void>;edit:()=>void;users:()=>void;close:()=>void;}
 const AccountContext=createContext<AccountState|null>(null);
@@ -14,12 +15,14 @@ export function AccountProvider({children}:{children:ReactNode}){
     let active=true,initialized=false,userSub:string|undefined;
     const signedOut=()=>{userSub=undefined;setUser(null);setData(null);setBusy(false);setError('');setEditing(false);setAdminView(false);};
     const required=()=>{setEditing(true);};
+    const accountError=(event:Event)=>{if(active)setError(String((event as CustomEvent).detail));};
+    window.addEventListener('mab-account-error',accountError);
     window.addEventListener('mab-sign-in-required',signedOut);window.addEventListener('mab-profile-required',required);
     const loaded=(next:User)=>{if(!active||!initialized)return;setUser(next);if(userSub!==next.profile.sub){userSub=next.profile.sub;setData(null);setAdminView(false);setEditing(false);void loadProfile();}};
     accountManager().events.addUserLoaded(loaded);
     accountManager().events.addUserUnloaded?.(signedOut);
     void initializeAccount().then(async next=>{if(!active)return;initialized=true;if(!next){setBusy(false);return;}userSub=next.profile.sub;setUser(next);await loadProfile();}).catch(()=>{if(active){setError('Sign-in could not be completed. Please try again.');setBusy(false);}});
-    return()=>{active=false;window.removeEventListener('mab-sign-in-required',signedOut);window.removeEventListener('mab-profile-required',required);accountManager().events.removeUserLoaded(loaded);accountManager().events.removeUserUnloaded?.(signedOut);};
+    return()=>{active=false;window.removeEventListener('mab-account-error',accountError);window.removeEventListener('mab-sign-in-required',signedOut);window.removeEventListener('mab-profile-required',required);accountManager().events.removeUserLoaded(loaded);accountManager().events.removeUserUnloaded?.(signedOut);};
   },[]);
   return <AccountContext.Provider value={{user,data,busy,error,editing,adminView,reload:loadProfile,edit:()=>setEditing(true),users:()=>setAdminView(true),close:()=>{setEditing(false);setAdminView(false);}}}>{children}</AccountContext.Provider>;
 }
@@ -27,7 +30,7 @@ export function AccountControls(){
   const account=useContext(AccountContext);
   const [open,setOpen]=useState(false);
   if(!account?.user)return null;
-  return <div className="relative"><button className="btn-ghost" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>Account</button>{open&&<div className="absolute right-0 top-full mt-2 p-2 bg-surface border border-border rounded-md shadow-lg min-w-40 z-40 flex flex-col gap-1" onKeyDown={event=>{if(event.key==='Escape')setOpen(false);}}><button className="btn-ghost text-left" onClick={()=>{setOpen(false);account.edit();}}>Profile</button>{account.data?.admin&&<button className="btn-ghost text-left" onClick={()=>{setOpen(false);account.users();}}>Users</button>}<button className="btn-ghost text-left" onClick={()=>void signOut()}>Sign out</button></div>}</div>;
+  return <div className="relative">{isEmbedded()&&<a className="btn-ghost mr-2" href={standaloneUrl()} target="_blank" rel="noopener noreferrer">Open full page</a>}<button className="btn-ghost" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>Account</button>{open&&<div className="absolute right-0 top-full mt-2 p-2 bg-surface border border-border rounded-md shadow-lg min-w-40 z-40 flex flex-col gap-1" onKeyDown={event=>{if(event.key==='Escape')setOpen(false);}}><button className="btn-ghost text-left" onClick={()=>{setOpen(false);account.edit();}}>Profile</button>{account.data?.admin&&<button className="btn-ghost text-left" onClick={()=>{setOpen(false);account.users();}}>Users</button>}<button className="btn-ghost text-left" onClick={()=>void signOut()}>Sign out</button></div>}</div>;
 }
 export function AccountGate({children,header}:{children:ReactNode;header?:ReactNode}){
   const account=useContext(AccountContext);
@@ -46,7 +49,7 @@ export function AccountGate({children,header}:{children:ReactNode;header?:ReactN
 function AccountEntry({error}:{error:string}){
   const [busy,setBusy]=useState(false),[failure,setFailure]=useState('');
   async function enter(register:boolean){setBusy(true);setFailure('');try{await (register?createFreeAccount():signIn());}catch{setFailure('Sign-in is unavailable. Please try again.');}finally{setBusy(false);}}
-  return <section className="panel panel-bd max-w-lg mx-auto space-y-4"><h1 className="text-xl font-semibold">MAB account</h1>{(failure||error)&&<p role="alert">{failure||error}</p>}<div className="flex gap-3"><button className="btn-primary" disabled={busy} onClick={()=>void enter(true)}>Create free account</button><button className="btn-ghost" disabled={busy} onClick={()=>void enter(false)}>Sign in</button></div></section>;
+  return <section className="panel panel-bd max-w-lg mx-auto space-y-4"><h1 className="text-xl font-semibold">MAB account</h1>{(failure||error)&&<p role="alert">{failure||error}</p>}<div className="flex gap-3"><button className="btn-primary" disabled={busy} onClick={()=>void enter(true)}>Create free account</button><button className="btn-ghost" disabled={busy} onClick={()=>void enter(false)}>Sign in</button></div>{isEmbedded()&&<div className="text-sm space-y-2"><p>Sign-in opens in a separate window.</p><a className="text-accent underline" href={error===SIGNOUT_BLOCKED?logoutStartUrl():standaloneUrl()} target="_blank" rel="noopener noreferrer">{error===SIGNOUT_BLOCKED?'Finish signing out':'Open full page'}</a></div>}</section>;
 }
 function ProfileForm({account}:{account:AccountState}){
   const data=account.data,initial=data?.profile;
