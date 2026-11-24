@@ -2,8 +2,10 @@ import { DashboardRequest } from "./DashboardRequest";
 import { finalState } from "../lib/job-status";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isPublicResult } from "../lib/public-results";
+import { ACCOUNT_ENABLED } from "../lib/account-config";
+import { sandboxedReport } from "../lib/report-sandbox";
 import {
-  artifactUrl, listResultArtifacts, deriveStatus, fetchTextArtifact, fetchJobState,
+  artifactUrl, listResultArtifacts, deriveStatus, fetchTextArtifact, fetchJobState, fetchArtifactResponse, downloadArtifact,
   type RunStatus, type S3ListEntry,
 } from "../lib/gtotree-config";
 import { rememberJob } from "../lib/jobStore";
@@ -83,7 +85,7 @@ export function ResultsView({ folder, onBack }: Props) {
     if (!status?.reportFile) return;
     setDlState("working");
     try {
-      const res = await fetch(artifactUrl(folder, status.reportFile));
+      const res = await fetchArtifactResponse(folder, status.reportFile);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
       const blob = new Blob([html], { type: "text/html" });
@@ -163,21 +165,34 @@ export function ResultsView({ folder, onBack }: Props) {
 }
 
 function DashboardTab({ folder, reportFile }: { folder: string; reportFile: string }) {
-  const url = artifactUrl(folder, reportFile);
+  const [blobUrl,setBlobUrl]=useState(''),[error,setError]=useState(''),[retry,setRetry]=useState(0);
+  useEffect(()=>{
+    if(!ACCOUNT_ENABLED)return;
+    setError('');
+    let active=true,url='';
+    void fetchArtifactResponse(folder,reportFile).then(async response=>{
+      if(!response.ok)throw new Error();const html=await response.text();if(!active)return;
+      url=URL.createObjectURL(new Blob([sandboxedReport(html,document.documentElement.classList.contains('dark')?'dark':'light')],{type:'text/html'}));setBlobUrl(url);
+    }).catch(()=>{if(active)setError('Report unavailable.');});
+    return()=>{active=false;if(url)URL.revokeObjectURL(url);};
+  },[folder,reportFile,retry]);
+  const url = ACCOUNT_ENABLED?blobUrl:artifactUrl(folder, reportFile);
+  const openUrl=ACCOUNT_ENABLED?window.location.origin+'/?result='+encodeURIComponent(folder):url;
   return (
     <section aria-label="Interactive report" className="space-y-2">
       <div className="flex justify-end">
-        <a href={url} target="_blank" rel="noreferrer"
+        <a href={openUrl} target="_blank" rel="noreferrer"
           className="text-xs text-accent hover:underline">
           Open in new tab
         </a>
       </div>
-      <iframe
+      {error?<div role="alert" className="text-danger">{error} <button className="btn-ghost" onClick={()=>setRetry(value=>value+1)}>Retry</button></div>:!url?<p role="status">Loading report…</p>:<iframe
         src={url}
         title="GToTree interactive dashboard"
         className="block w-full border-0"
         style={{ height: "78vh" }}
-      />
+        sandbox={ACCOUNT_ENABLED?'allow-scripts allow-downloads':undefined}
+      />}
     </section>
   );
 }
@@ -220,7 +235,7 @@ function TreeTab({ folder, status, newick }:
         <span className="text-xs font-mono text-fg-muted">{status.treeFile}</span>
       </div>
       <div className="panel-bd">
-        <TreeViewer newick={newick} downloadUrl={artifactUrl(folder, status.treeFile)} />
+        <TreeViewer newick={newick} downloadUrl={ACCOUNT_ENABLED?undefined:artifactUrl(folder, status.treeFile)} onDownload={ACCOUNT_ENABLED?()=>downloadArtifact(folder,status.treeFile!):undefined} />
       </div>
     </section>
   );
@@ -266,10 +281,10 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
                   <span className="truncate">{rel}</span>
                   <span className="text-fg-subtle text-[10px] shrink-0">{fmtSize(e.size)}</span>
                 </span>
-                <a href={artifactUrl(folder, rel)} target="_blank" rel="noreferrer" download
+                {ACCOUNT_ENABLED?<ArtifactDownload folder={folder} name={rel}/>:<a href={artifactUrl(folder, rel)} target="_blank" rel="noreferrer" download
                   className="text-xs text-accent hover:underline inline-flex items-center gap-1 shrink-0">
                   Download
-                </a>
+                </a>}
               </li>
             );
           })}
@@ -277,6 +292,11 @@ function FilesTab({ folder, artifacts }: { folder: string; artifacts: S3ListEntr
       </div>
     </section>
   );
+}
+
+function ArtifactDownload({folder,name}:{folder:string;name:string}){
+  const [busy,setBusy]=useState(false),[failed,setFailed]=useState(false);
+  return <button className="text-xs text-accent hover:underline shrink-0" disabled={busy} onClick={async()=>{setBusy(true);setFailed(false);try{await downloadArtifact(folder,name);}catch{setFailed(true);}finally{setBusy(false);}}}>{busy?'Preparing…':failed?'Retry download':'Download'}</button>;
 }
 
 function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -295,4 +315,5 @@ function fmtSize(n: number): string {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return `${v.toFixed(v >= 10 ? 0 : 1)} ${u[i]}`;
 }
+
 

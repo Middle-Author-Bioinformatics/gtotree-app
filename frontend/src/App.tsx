@@ -4,10 +4,23 @@ import { SubmitView } from "./components/SubmitView";
 import { ResultsView } from "./components/ResultsView";
 import { normaliseJobId } from "./lib/jobStore";
 import { HAS_BACKEND } from "./lib/gtotree-config";
+import { ACCOUNT_ENABLED } from "./lib/account-config";
+import { AccountProvider, AccountGate } from "./components/Account";
+import { useGenomeImport } from "./lib/useGenomeImport";
 
 type View = { kind: "submit" } | { kind: "results"; folder: string };
 
 export default function App() {
+  if(!ACCOUNT_ENABLED)return <Workspace/>;
+  return <AccountProvider><GenomeImportBridge/><AccountGate><Workspace/></AccountGate></AccountProvider>;
+}
+
+function GenomeImportBridge(){
+  const {importError}=useGenomeImport(true);
+  return importError?<p role="alert" className="text-danger text-sm p-4">{importError}</p>:null;
+}
+
+function Workspace() {
   const [view, setView] = useState<View>(() => { const code=normaliseJobId(new URLSearchParams(window.location.search).get("result")||"");return code?{kind:"results",folder:code}:{kind:"submit"}; });
 
   return (
@@ -40,3 +53,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -1,4 +1,6 @@
 import { isPublicResult } from "./public-results";
+import { ACCOUNT_ENABLED, ACCOUNT_API } from "./account-config";
+import { accountFetch, accountJson, downloadAccountArtifact } from "./account-api";
 import { validateJobState, type JobState } from "./job-status";
 // GToTree Web Server — runtime config + S3 upload/results helpers.
 //
@@ -41,7 +43,7 @@ export const GT_CONFIG = {
   publicResults: (env.VITE_GTOTREE_PUBLIC_RESULTS as string | undefined)?.replace(/\/+$/, "") || "",
 };
 
-export const HAS_BACKEND = GT_CONFIG.apiBase !== "";
+export const HAS_BACKEND = ACCOUNT_ENABLED ? !!ACCOUNT_API : GT_CONFIG.apiBase !== "";
 
 /** Hard cap on total uploaded data across all inputs, in bytes. 100 MB. */
 export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
@@ -300,6 +302,7 @@ interface PresignEntry { file_name: string; url: string; headers?: Record<string
 interface PresignResponse { slug: string; bucket: string; entries: PresignEntry[]; }
 
 async function postJson<T>(payload: unknown): Promise<T> {
+  if(ACCOUNT_ENABLED)return accountJson<T>('/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   if (!GT_CONFIG.apiBase) {
     throw new Error(
       "Upload service unavailable.",
@@ -371,6 +374,7 @@ export async function uploadRun(
     files: items.map((it) => ({
       name: it.name,
       content_type: guessContentType(it.name, it.file.type),
+      size: it.file.size,
     })),
   });
   if (!presign?.entries || !Array.isArray(presign.entries)) {
@@ -408,14 +412,27 @@ export function resultsPrefix(folder: string): string {
 }
 
 export function artifactUrl(folder: string, relPath: string): string {
+  if(ACCOUNT_ENABLED)return ACCOUNT_API+artifactPath(folder,relPath);
   const encoded = relPath.split("/").map(encodeURIComponent).join("/");
   return `${resultsPrefix(folder)}/${encoded}`;
+}
+
+export function artifactPath(folder:string,relative:string):string {
+  return '/artifact/'+encodeURIComponent(folder)+'/'+relative.split('/').map(encodeURIComponent).join('/');
+}
+export function fetchArtifactResponse(folder:string,relative:string):Promise<Response>{
+  return ACCOUNT_ENABLED?accountFetch(artifactPath(folder,relative)):fetch(artifactUrl(folder,relative),{cache:'no-store'});
+}
+export async function downloadArtifact(folder:string,relative:string,filename=relative.split('/').pop()||'download'){
+  if(ACCOUNT_ENABLED)return downloadAccountArtifact(artifactPath(folder,relative),filename);
+  const link=document.createElement('a');link.href=artifactUrl(folder,relative);link.download=filename;link.click();
 }
 
 export interface S3ListEntry { key: string; size: number; last_modified: string; }
 
 /** List every object under `<folder>/` in the public results bucket. */
 export async function listResultArtifacts(folder: string): Promise<S3ListEntry[]> {
+  if(ACCOUNT_ENABLED)return (await accountJson<{files:S3ListEntry[]}>('/results/'+encodeURIComponent(folder))).files;
   if (!GT_CONFIG.publicResults) {
     throw new Error("No results bucket configured. Set VITE_GTOTREE_PUBLIC_RESULTS.");
   }
@@ -491,6 +508,7 @@ export function deriveStatus(folder: string, entries: S3ListEntry[]): RunStatus 
 
 /** Fetch a scientific text artifact as a string. */
 export async function fetchTextArtifact(folder: string, relPath: string): Promise<string | null> {
+  if(ACCOUNT_ENABLED){const res=await fetchArtifactResponse(folder,relPath);if(res.status===404)return null;if(!res.ok)throw new Error('File unavailable.');return res.text();}
   if (!GT_CONFIG.publicResults) return null;
   const url = `${artifactUrl(folder, relPath)}?_=${Date.now()}`;
   const res = await fetch(url);
@@ -500,8 +518,10 @@ export async function fetchTextArtifact(folder: string, relPath: string): Promis
 
 /** Explicit worker state takes precedence over partially uploaded artifacts. */
 export async function fetchJobState(folder: string): Promise<JobState|null> {
+  if(ACCOUNT_ENABLED){const response=await accountFetch(artifactPath(folder,'status.json'));if(response.status===404)return null;if(!response.ok)throw new Error('Job status unavailable.');return validateJobState(await response.json());}
   const response=await fetch(`${resultsPrefix(folder)}/status.json?_=${Date.now()}`,{cache:"no-store"});
   if(response.status===404)return null;
   if(!response.ok)throw new Error(`Unable to read job status (${response.status})`);
   return validateJobState(await response.json());
 }
+

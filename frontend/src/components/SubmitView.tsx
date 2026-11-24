@@ -1,4 +1,5 @@
 import { useGenomeImport } from "../lib/useGenomeImport";
+import { ACCOUNT_ENABLED } from "../lib/account-config";
 import { ACCESSION, MAX_REFERENCES, MAX_SELECTION_BYTES, parseSelection, type GenomeSelection } from "../lib/genome-selection";
 import { useEffect, useMemo, useState } from "react";
 import { Dropzone } from "./Dropzone";
@@ -356,6 +357,7 @@ export function SubmitView({ onSubmitted, onLookup }: Props) {
       {/* Submit / progress / done */}
       <section className="panel">
         <div className="panel-bd">
+          {ACCOUNT_ENABLED&&<p className="text-xs text-fg-muted mb-3">Any registered MAB user with the result code can view these results.</p>}
           {phase === "done" ? (
             <SubmittedHero folder={folder} onView={() => onSubmitted(folder)} />
           ) : (
@@ -452,3 +454,4 @@ function ModeBtn({ active, onClick, children }:
     </button>
   );
 }
+
